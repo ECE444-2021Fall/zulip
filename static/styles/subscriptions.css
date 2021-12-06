@@ -32,11 +32,6 @@
     overflow-wrap: break-word;
 }
 
-#subscriptions_table .subscription_block {
-    padding-left: 0.5em;
-    vertical-align: middle;
-}
-
 .subscription-info-container {
     display: inline-block;
     /* subtract out the width of the subscribe button and arrow. */
@@ -65,10 +60,6 @@
     font-weight: 300;
 }
 
-#add_new_subscription {
-    text-align: left;
-}
-
 .subscription_header {
     min-height: 47px;
 }
@@ -94,24 +85,16 @@
     border-radius: 2px;
 }
 
-.subscription_settings ul {
-    list-style-type: none;
-}
-
 .stream-email {
-    font-family: Monaco, Menlo, Consolas, "Courier New", monospace;
+    font-family: "Source Code Pro", monospace;
     padding: 5px;
-    font-size: 0.9em;
+    /* We need a smaller font because this is fixed-width and we really
+       want it to fit without line-wrapping. 82.5% copies our code block
+       font size. */
+    font-size: 82.5%;
     background-color: hsl(0, 0%, 98%);
     border: 1px solid hsl(0, 0%, 87%);
     border-radius: 4px;
-}
-
-.subscription-control-label {
-    display: inline-block;
-    vertical-align: middle;
-    line-height: 18px;
-    padding: 5px;
 }
 
 .sp-preview {
@@ -137,10 +120,6 @@
 .muted-sub,
 .control-label-disabled {
     color: hsl(0, 0%, 64%);
-}
-
-.sub_setting_checkbox .checkbox span {
-    margin-top: 7px !important;
 }
 
 .sub_setting_checkbox .muted-sub label,
@@ -178,29 +157,25 @@
     border: 1px solid hsl(0, 0%, 68%);
 }
 
-form#add_new_subscription {
-    margin: 0;
-}
-
-.create_stream_button {
+.create_stream_plus_button {
+    font-size: 24px;
+    font-weight: 500;
+    position: relative;
+    top: 2px;
+    border: 1px solid hsl(0, 0%, 80%);
+    border-radius: 5px;
+    background-color: hsl(0, 0%, 100%);
+    color: hsl(0, 0%, 0%);
     margin: 0 0 0 5px;
-
-    border: none;
-    outline: none;
-    background-color: transparent;
-
-    font-size: 2.2em;
-    font-weight: 300;
-    line-height: 1;
-    color: hsl(0, 0%, 67%);
-
-    display: inline-block;
-    transition: all 0.2s ease;
-    padding-bottom: 0;
-    padding-top: 0;
+    height: 27px;
 
     &:hover {
-        color: hsl(0, 0%, 27%);
+        border: 1px solid hsl(0, 0%, 47%);
+    }
+
+    span {
+        position: relative;
+        top: -5px;
     }
 }
 
@@ -214,10 +189,19 @@ form#add_new_subscription {
     color: hsl(0, 100%, 50%);
 }
 
-.sub_settings_title {
-    line-height: 30px;
-    margin: 10px 0 0 0;
-    font-size: 16px;
+/* TODO: Unify with settings.css definition */
+h3.stream_setting_subsection_title {
+    display: inline-block;
+    font-size: 1.5em;
+    font-weight: normal;
+    line-height: 1.5;
+}
+
+h4.stream_setting_subsection_title {
+    display: inline-block;
+    font-size: 1.35em;
+    font-weight: normal;
+    line-height: 1.5;
 }
 
 .new-stream-name,
@@ -236,7 +220,8 @@ form#add_new_subscription {
 
     .subscriber_list_container {
         position: relative;
-        max-height: 300px;
+        /* 2*45px (settings header) + 38px(tab-container row) + 20px (margin for .inner-box) + 134px (add user input and search widget area) = 282px */
+        max-height: calc(95vh - 282px);
         overflow: auto;
         text-align: left;
         -webkit-overflow-scrolling: touch;
@@ -250,26 +235,24 @@ form#add_new_subscription {
             margin: auto;
             border-radius: 6px;
 
+            tbody {
+                border-bottom: none;
+
+                tr:last-of-type {
+                    border-bottom: none;
+                }
+            }
+
             tr {
                 border-bottom: 1px solid hsl(0, 0%, 93%);
 
-                &:last-of-type {
-                    border-bottom: none;
-                }
-
-                td {
-                    padding: 4px 0;
+                td,
+                th {
+                    padding: 4px 0 4px 5px;
+                    vertical-align: middle;
 
                     &:first-of-type {
                         padding-left: 10px;
-                    }
-
-                    &:last-of-type {
-                        padding-right: 10px;
-                    }
-
-                    &.unsubscribe {
-                        text-align: right;
                     }
                 }
             }
@@ -283,13 +266,29 @@ form#add_new_subscription {
                 content: "No subscribers to this stream.";
                 display: block;
 
-                text-align: center;
                 color: hsl(0, 0%, 67%);
+                padding: 5px 5px 5px 10px;
             }
 
-            &:empty {
-                display: block;
-                padding: 5px;
+            thead th {
+                color: inherit;
+                background-color: hsl(0, 0%, 100%);
+
+                &:first-of-type {
+                    border-top-left-radius: 4px;
+                }
+
+                &:last-of-type {
+                    border-top-right-radius: 4px;
+                }
+
+                position: sticky;
+                top: 0;
+                z-index: 1;
+            }
+
+            .hidden-subscriber-email {
+                font-style: italic;
             }
         }
     }
@@ -316,7 +315,7 @@ form#add_new_subscription {
     width: 100%;
     margin: 10px auto;
 
-    .stream_subscription_info {
+    .stream_subscription_request_result {
         a {
             color: inherit;
         }
@@ -324,7 +323,7 @@ form#add_new_subscription {
 }
 
 .subscriber-search {
-    margin: 10px 0 0 0;
+    margin: 10px 0 0;
 }
 
 .subscriber_list_add .form-inline {
@@ -342,7 +341,7 @@ form#add_new_subscription {
 }
 
 .remove-subscriber-form {
-    margin: 0 0 0 0;
+    margin: 0;
 }
 
 #subscription-status {
@@ -452,9 +451,10 @@ form#add_new_subscription {
 
     .exit-sign {
         position: relative;
-        top: 3px;
+        top: 1px;
         margin-left: 3px;
         font-size: 1.5rem;
+        line-height: 1;
         font-weight: 600;
         cursor: pointer;
     }
@@ -488,20 +488,22 @@ form#add_new_subscription {
             margin-top: calc(45vh - 75px);
             text-align: center;
             font-size: 1em;
+            margin-left: 2em;
+            margin-right: 2em;
 
             span {
                 color: hsl(0, 0%, 67%);
             }
 
             button {
-                padding: 6px 10px 8px 10px;
+                padding: 6px 10px 8px;
                 display: block;
-                margin: 0 auto 10px auto;
+                margin: 0 auto 10px;
             }
         }
 
         .display-type {
-            padding: 6px;
+            padding: 2px;
             text-align: center;
             font-weight: 600;
             border-bottom: 1px solid hsl(0, 0%, 87%);
@@ -516,7 +518,7 @@ form#add_new_subscription {
 
             .stream-info-title {
                 display: none;
-                font-size: 1em;
+                font-size: 1.5em;
                 line-height: 1;
                 margin: 9px 0;
                 font-weight: 600;
@@ -529,7 +531,7 @@ form#add_new_subscription {
             border: none;
             background-color: hsl(0, 0%, 98%);
             box-shadow: inset 0 0 50px hsla(0, 0%, 0%, 0.5);
-            background-image: url(../images/preview-loading.png);
+            background-image: url("../images/preview-loading.png");
             background-size: 150px auto;
             background-position: center center;
             background-repeat: no-repeat;
@@ -602,16 +604,6 @@ form#add_new_subscription {
         margin-bottom: 20px;
     }
 
-    #make-invite-only {
-        .radio {
-            margin: 5px;
-        }
-
-        .grey-box .checkbox {
-            margin: 5px;
-        }
-    }
-
     #announce-new-stream {
         margin-top: 10px;
 
@@ -623,7 +615,7 @@ form#add_new_subscription {
 }
 
 .stream-row {
-    padding: 15px 10px 11px 10px;
+    padding: 15px 10px 11px;
     border-bottom: 1px solid hsl(0, 0%, 93%);
     cursor: pointer;
 
@@ -712,6 +704,7 @@ form#add_new_subscription {
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
+            margin-right: 12px;
         }
 
         .top-bar .subscriber-count,
@@ -781,9 +774,6 @@ form#add_new_subscription {
     }
 }
 
-#subscription_overlay
-    .stream-description
-    .stream-description-editable:empty::after,
 .stream-row .sub-info-box .description:empty::after {
     content: attr(data-no-description);
     font-style: italic;
@@ -801,6 +791,7 @@ form#add_new_subscription {
             position: absolute;
             bottom: 0;
             width: calc(100% - 27px);
+            padding-top: 9px;
         }
 
         .stream-creation-body {
@@ -841,8 +832,33 @@ form#add_new_subscription {
         margin: 20px;
     }
 
+    .stream_settings_header {
+        white-space: nowrap;
+        display: flex;
+        margin-left: 15px;
+
+        .tab-container {
+            .ind-tab {
+                padding: 3px 4px;
+                width: 80px;
+            }
+        }
+
+        .button-group {
+            padding-top: 5px;
+            margin-left: auto;
+            margin-right: 15px;
+
+            .subscribe-button,
+            #preview-stream-button,
+            .deactivate {
+                margin-right: 3px;
+                text-decoration: none;
+            }
+        }
+    }
+
     .stream-header {
-        margin-bottom: 20px;
         white-space: nowrap;
 
         .stream-name {
@@ -851,34 +867,26 @@ form#add_new_subscription {
             font-size: 1.5em;
             font-weight: 600;
             margin-left: -3px;
-            padding-bottom: 5px;
+            margin-top: -5px;
             white-space: nowrap;
             max-width: 260px;
 
-            .stream-name-editable {
-                line-height: 1em;
+            .sub-stream-name {
                 display: block;
                 max-width: 20ch;
                 overflow: hidden;
                 text-overflow: ellipsis;
                 float: left;
             }
-
-            .stream-name-edit-box {
-                text-overflow: clip;
-                border-style: groove;
-            }
-        }
-
-        .deactivate,
-        .subscribe-button {
-            float: right;
-            margin-top: -5px;
-            margin-right: 5px;
         }
 
         .button-group {
             float: right;
+
+            .deactivate {
+                margin-right: 3px;
+                text-decoration: none;
+            }
         }
 
         .subscribe-button.unsubscribed {
@@ -894,75 +902,46 @@ form#add_new_subscription {
             display: inline-block;
             vertical-align: top;
             margin-right: 5px;
+            margin-top: -5px;
             font-size: 1.5em;
 
             &.hash::after {
                 top: 1px;
             }
         }
+
+        .stream_change_property_info {
+            vertical-align: top;
+            margin: -5px 0 0;
+        }
     }
 
     .stream-description {
-        font-size: 0.9em;
         margin-bottom: 5px;
-    }
 
-    #preview-stream-button {
-        float: right;
-        margin-top: -5px;
-        margin-right: 5px;
-        text-decoration: none;
-    }
-
-    .editable-section {
-        position: relative;
-        display: inline;
-        min-width: 10px;
-        max-width: 100%;
-
-        &[contenteditable="true"] {
-            display: inline-block;
-            vertical-align: top;
-            color: hsl(170, 48%, 54%);
-
-            &:focus {
-                outline: none;
-            }
+        .no-description {
+            font-style: italic;
+            color: hsl(0, 0%, 67%);
         }
     }
 
-    .editable {
-        position: relative;
-        top: -1px;
-        margin-left: 5px;
-        color: hsl(0, 0%, 67%);
-        cursor: pointer;
-        font-size: 1.4rem;
-        font-weight: 300;
+    .stream_setting_subsection_header {
+        display: flex;
 
-        transition: all 0.3s ease;
-
-        &:empty::before {
-            content: "\f040";
-            font-family: FontAwesome;
-            font-size: 0.8rem;
-            font-weight: normal;
+        .stream_permission_change_info {
+            margin: 12px auto 0 3px;
         }
 
-        &:not(:empty) {
-            position: relative;
-            top: 2px;
-        }
-
-        &:hover {
-            color: hsl(0, 0%, 27%);
+        .button-group {
+            display: inline;
+            margin-left: auto;
+            align-self: center;
         }
     }
 
     .checkmark {
         display: none;
         margin-left: 5px;
-        font-size: 0.9rem;
         color: hsl(0, 0%, 67%);
 
         cursor: pointer;
@@ -974,8 +953,6 @@ form#add_new_subscription {
 
     .subscription-type {
         margin-bottom: 10px;
-        font-size: 0.9em;
-        opacity: 0.5;
 
         .subscription-type-text {
             display: inline;
@@ -998,6 +975,10 @@ form#add_new_subscription {
         height: calc(100% - 45px);
         overflow-y: auto;
         -webkit-overflow-scrolling: touch;
+
+        .tab-container {
+            padding-top: 5px;
+        }
     }
 
     .subscription_settings {
@@ -1013,13 +994,10 @@ form#add_new_subscription {
         }
     }
 
-    #personal_settings_label_container {
-        margin-bottom: 5px;
-    }
-
-    .alert-notification:not(:empty) {
-        vertical-align: unset;
-        margin-top: 10px;
+    #personal-stream-settings {
+        .stream_change_property_status {
+            margin: 9px auto 3px 3px;
+        }
     }
 
     .loading_indicator_text {
@@ -1028,66 +1006,89 @@ form#add_new_subscription {
     }
 }
 
-ul.grey-box {
-    #stream_privacy_modal & {
-        border-style: none;
-    }
-
-    li {
-        #stream_privacy_modal &,
-        #subscription_overlay & {
-            border-bottom: 1px solid hsl(0, 0%, 87%);
-            padding: 5px 0;
-        }
-
+#subscription_overlay .subsection-parent {
+    .input-group {
         input[type="checkbox"] {
-            #stream_privacy_modal & {
-                margin-top: 4px;
-            }
-
-            #subscription_overlay & {
-                margin-top: 0;
-            }
+            margin-top: 0;
         }
 
         &:last-of-type {
-            #stream_privacy_modal &,
-            #subscription_overlay & {
-                border-bottom: none;
-            }
+            border-bottom: none;
         }
 
         .sp-replacer {
-            #stream_privacy_modal &,
-            #subscription_overlay & {
-                box-shadow: none;
-            }
+            box-shadow: none;
         }
 
         input[type="radio"] {
-            #stream_privacy_modal &,
-            #subscription_overlay & {
-                margin-right: 5px;
-            }
+            margin-right: 5px;
         }
 
-        input[type="text"] {
-            width: 5ch;
-            text-align: right;
-        }
-
-        label.dropdown-title {
-            display: block;
-        }
-
-        select {
-            width: auto;
-            margin-bottom: 0;
+        .inline {
+            display: inline !important;
         }
     }
 }
 
-@media (max-width: 1130px) {
+#stream_privacy_modal,
+.stream-creation-body {
+    .input-group {
+        margin-bottom: 10px;
+
+        .radio-input-parent {
+            border-bottom: 1px solid hsl(0, 0%, 87%);
+            margin: 5px 0 5px 5px;
+            padding: 5px 0;
+
+            &:last-of-type {
+                border-bottom: none;
+            }
+
+            label.radio {
+                display: inline;
+                margin: 5px;
+                padding-left: 0;
+            }
+        }
+
+        &.message-retention-setting-group {
+            input {
+                width: 5ch;
+                text-align: right;
+            }
+
+            select {
+                width: auto;
+                margin-bottom: 0;
+            }
+        }
+    }
+}
+
+.stream-creation-body input[type="radio"] {
+    margin: 3.5px 0 1px;
+}
+
+/* we have this 2px difference due to the font size being larger in the modal */
+#stream_privacy_modal input[type="radio"] {
+    margin: 5.5px 0 1px;
+}
+
+#change_stream_description {
+    width: 100%;
+    height: 80px;
+    margin-bottom: 4px;
+    box-sizing: border-box;
+}
+
+#stream_privacy_modal .stream-message-retention-days-input input[type="text"] {
+    border-radius: 5px;
+    box-shadow: none;
+    margin: 0;
+    height: inherit;
+}
+
+@media (width < $lg_min) {
     .subscriptions-container {
         max-width: 95%;
     }
@@ -1103,14 +1104,17 @@ ul.grey-box {
     }
 }
 
-@media (max-width: 1033px) {
+@media (width < $lg_min) {
     .subscriptions-container .left .search-container {
         flex-wrap: wrap;
-        justify-content: space-evenly;
     }
 
     .search-container {
         text-align: center;
+    }
+
+    #subscription_overlay .stream_settings_header {
+        flex-wrap: wrap;
     }
 }
 
@@ -1119,7 +1123,7 @@ ul.grey-box {
 
    Longer-term we should extract this logic two-column-overlay class
    to read more naturally. */
-@media (max-width: 750px) {
+@media (width < $md_min) {
     .subscriptions-container {
         position: relative;
         overflow: hidden;
@@ -1180,12 +1184,57 @@ ul.grey-box {
     }
 }
 
-#stream-creation #invites-warning-modal .modal-footer {
-    position: static;
+@media (width < $sm_min) {
+    #subscription_overlay .subscription_settings {
+        .button-group {
+            display: block;
+            float: right;
+            margin-top: 10px;
+        }
+
+        .stream-header .button-group {
+            margin-top: -5px;
+        }
+    }
+
+    #subscription_overlay .subscription_settings .stream_change_property_info {
+        /* For small widths where there is not enough space
+        to show alert beside stream name we set its display
+        to block so it is shown in new line. But to avoid
+        it covering whole screen width we set max-width
+        so that it does not losses inline-block appearance. */
+
+        /* TODO: This will probably be not required once
+        we have tabbed navigation as button group width
+        will be smaller. */
+        display: block;
+        max-width: max-content;
+        white-space: nowrap;
+    }
 }
 
-@media (max-width: 350px) {
-    .stream_row .description {
-        display: none;
+@media (width <= 500px) {
+    #subscription_overlay .stream_settings_header {
+        display: block;
+        text-align: center;
+        margin-left: 0;
+
+        .tab-container {
+            .ind-tab {
+                width: 85px;
+            }
+        }
     }
+
+    #subscription_overlay .stream_setting_subsection_header {
+        display: block;
+
+        .stream_permission_change_info {
+            margin: 12px auto 0 3px;
+        }
+    }
+}
+
+#stream-creation #invites-warning-modal .modal-footer {
+    position: static;
 }

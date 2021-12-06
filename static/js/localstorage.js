@@ -1,4 +1,4 @@
-"use strict";
+import * as blueslip from "./blueslip";
 
 const ls = {
     // parse JSON without throwing an error.
@@ -26,7 +26,7 @@ const ls = {
         return {
             data,
             __valid: true,
-            expires: new Date().getTime() + expires,
+            expires: Date.now() + expires,
         };
     },
 
@@ -35,14 +35,14 @@ const ls = {
         let data = localStorage.getItem(key);
         data = ls.parseJSON(data);
 
-        if (data) {
-            if (data.__valid) {
-                // JSON forms of data with `Infinity` turns into `null`,
-                // so if null then it hasn't expired since nothing was specified.
-                if (!ls.isExpired(data.expires) || data.expires === null) {
-                    return data;
-                }
-            }
+        if (
+            data &&
+            data.__valid &&
+            // JSON forms of data with `Infinity` turns into `null`,
+            // so if null then it hasn't expired since nothing was specified.
+            (!ls.isExpired(data.expires) || data.expires === null)
+        ) {
+            return data;
         }
 
         return undefined;
@@ -68,9 +68,9 @@ const ls = {
         const key_regex = new RegExp(this.formGetter(version, regex));
         const keys = Object.keys(localStorage).filter((key) => key_regex.test(key));
 
-        keys.forEach((key) => {
+        for (const key of keys) {
             localStorage.removeItem(key);
-        });
+        }
     },
 
     // migrate from an older version of a data src to a newer one with a
@@ -81,7 +81,7 @@ const ls = {
 
         if (old && old.__valid) {
             const data = callback(old.data);
-            this.setData(v2, name, data, Infinity);
+            this.setData(v2, name, data, Number.POSITIVE_INFINITY);
 
             return data;
         }
@@ -91,10 +91,10 @@ const ls = {
 };
 
 // return a new function instance that has instance-scoped variables.
-const localstorage = function () {
+export const localstorage = function () {
     const _data = {
         VERSION: 1,
-        expires: Infinity,
+        expires: Number.POSITIVE_INFINITY,
         expiresIsGlobal: false,
     };
 
@@ -120,14 +120,14 @@ const localstorage = function () {
         },
 
         set(name, data) {
-            if (typeof _data.VERSION !== "undefined") {
+            if (_data.VERSION !== undefined) {
                 ls.setData(_data.VERSION, name, data, _data.expires);
 
                 // if the expires attribute was not set as a global, then
                 // make sure to return it back to Infinity to not impose
                 // constraints on the next key.
                 if (!_data.expiresIsGlobal) {
-                    _data.expires = Infinity;
+                    _data.expires = Number.POSITIVE_INFINITY;
                 }
 
                 return true;
@@ -179,6 +179,3 @@ localstorage.supported = function supports_localstorage() {
         return false;
     }
 };
-
-module.exports = localstorage;
-window.localstorage = localstorage;

@@ -2,9 +2,9 @@ from zerver.lib.test_classes import WebhookTestCase
 
 
 class WordPressHookTests(WebhookTestCase):
-    STREAM_NAME = 'wordpress'
+    STREAM_NAME = "wordpress"
     URL_TEMPLATE = "/api/v1/external/wordpress?api_key={api_key}&stream={stream}"
-    FIXTURE_DIR_NAME = 'wordpress'
+    WEBHOOK_DIR_NAME = "wordpress"
 
     def test_publish_post(self) -> None:
 
@@ -33,8 +33,8 @@ class WordPressHookTests(WebhookTestCase):
     def test_publish_post_no_data_provided(self) -> None:
 
         # Note: the fixture includes 'hook=publish_post' because it's always added by HookPress
-        expected_topic = "WordPress Notification"
-        expected_message = "New post published:\n* [New WordPress Post](WordPress Post URL)"
+        expected_topic = "WordPress notification"
+        expected_message = "New post published:\n* [New WordPress post](WordPress post URL)"
 
         self.check_webhook(
             "publish_post_no_data_provided",
@@ -58,7 +58,9 @@ class WordPressHookTests(WebhookTestCase):
     def test_user_register(self) -> None:
 
         expected_topic = "New Blog Users"
-        expected_message = "New blog user registered:\n* **Name**: test_user\n* **Email**: test_user@example.com"
+        expected_message = (
+            "New blog user registered:\n* **Name**: test_user\n* **Email**: test_user@example.com"
+        )
 
         self.check_webhook(
             "user_register",
@@ -90,12 +92,14 @@ class WordPressHookTests(WebhookTestCase):
         self.subscribe(self.test_user, self.STREAM_NAME)
 
         # post to the webhook url
-        post_params = {'stream_name': self.STREAM_NAME,
-                       'content_type': 'application/x-www-form-urlencoded'}
-        result = self.client_post(self.url, 'unknown_action', **post_params)
+        post_params = {
+            "stream_name": self.STREAM_NAME,
+            "content_type": "application/x-www-form-urlencoded",
+        }
+        result = self.client_post(self.url, "unknown_action", **post_params)
 
         # check that we got the expected error message
-        self.assert_json_error(result, "Unknown WordPress webhook action: WordPress Action")
+        self.assert_json_error(result, "Unknown WordPress webhook action: WordPress action")
 
     def test_unknown_action_no_hook_provided(self) -> None:
 
@@ -103,11 +107,13 @@ class WordPressHookTests(WebhookTestCase):
         # params but without the hook parameter. This should also return an error.
 
         self.subscribe(self.test_user, self.STREAM_NAME)
-        post_params = {'stream_name': self.STREAM_NAME,
-                       'content_type': 'application/x-www-form-urlencoded'}
-        result = self.client_post(self.url, 'unknown_action', **post_params)
+        post_params = {
+            "stream_name": self.STREAM_NAME,
+            "content_type": "application/x-www-form-urlencoded",
+        }
+        result = self.client_post(self.url, "unknown_action", **post_params)
 
-        self.assert_json_error(result, "Unknown WordPress webhook action: WordPress Action")
+        self.assert_json_error(result, "Unknown WordPress webhook action: WordPress action")
 
     def get_body(self, fixture_name: str) -> str:
         return self.webhook_fixture_data("wordpress", fixture_name, file_type="txt")

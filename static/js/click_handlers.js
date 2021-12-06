@@ -1,25 +1,49 @@
-"use strict";
-
-const _ = require("lodash");
-const WinChan = require("winchan");
+import $ from "jquery";
+import _ from "lodash";
+import tippy from "tippy.js";
+import WinChan from "winchan";
 
 // You won't find every click handler here, but it's a good place to start!
 
-const render_buddy_list_tooltip = require("../templates/buddy_list_tooltip.hbs");
-const render_buddy_list_tooltip_content = require("../templates/buddy_list_tooltip_content.hbs");
+import render_buddy_list_tooltip_content from "../templates/buddy_list_tooltip_content.hbs";
 
-const settings_panel_menu = require("./settings_panel_menu");
-const util = require("./util");
+import * as activity from "./activity";
+import * as blueslip from "./blueslip";
+import * as browser_history from "./browser_history";
+import * as buddy_data from "./buddy_data";
+import * as channel from "./channel";
+import * as compose from "./compose";
+import * as compose_actions from "./compose_actions";
+import * as compose_error from "./compose_error";
+import * as compose_state from "./compose_state";
+import {media_breakpoints_num} from "./css_variables";
+import * as emoji_picker from "./emoji_picker";
+import * as hash_util from "./hash_util";
+import * as hotspots from "./hotspots";
+import * as message_edit from "./message_edit";
+import * as message_flags from "./message_flags";
+import * as message_lists from "./message_lists";
+import * as message_store from "./message_store";
+import * as muted_topics_ui from "./muted_topics_ui";
+import * as narrow from "./narrow";
+import * as notifications from "./notifications";
+import * as overlays from "./overlays";
+import * as popovers from "./popovers";
+import * as reactions from "./reactions";
+import * as recent_topics_ui from "./recent_topics_ui";
+import * as rows from "./rows";
+import * as server_events from "./server_events";
+import * as settings_panel_menu from "./settings_panel_menu";
+import * as settings_toggle from "./settings_toggle";
+import * as stream_list from "./stream_list";
+import * as stream_popover from "./stream_popover";
+import * as topic_list from "./topic_list";
+import * as ui_util from "./ui_util";
+import * as unread_ops from "./unread_ops";
+import * as user_profile from "./user_profile";
+import * as util from "./util";
 
-function convert_enter_to_click(e) {
-    const key = e.which;
-    if (key === 13) {
-        // Enter
-        $(e.currentTarget).trigger("click");
-    }
-}
-
-exports.initialize = function () {
+export function initialize() {
     // MESSAGE CLICKING
 
     function initialize_long_tap() {
@@ -37,7 +61,7 @@ exports.initialize = function () {
             if (!id) {
                 return;
             }
-            current_msg_list.select_id(id);
+            message_lists.current.select_id(id);
             setTimeout(() => {
                 // The algorithm to trigger long tap is that first, we check
                 // whether the message is still touched after MS_DELAY ms and
@@ -46,10 +70,8 @@ exports.initialize = function () {
                 // Later we check whether after MS_DELAY the user is still
                 // long touching the same message as it can be possible that
                 // user touched another message within MS_DELAY period.
-                if (meta.touchdown === true && !meta.invalid) {
-                    if (id === meta.current_target) {
-                        $(this).trigger("longtap");
-                    }
+                if (meta.touchdown === true && !meta.invalid && id === meta.current_target) {
+                    $(this).trigger("longtap");
                 }
             }, MS_DELAY);
         });
@@ -108,6 +130,18 @@ exports.initialize = function () {
             return true;
         }
 
+        // Ideally, this should be done via ClipboardJS, but it doesn't support
+        // feature of stopPropagation once clicked.
+        // See https://github.com/zenorocha/clipboard.js/pull/475
+        if (target.is(".copy_codeblock") || target.parents(".copy_codeblock").length > 0) {
+            return true;
+        }
+
+        // Don't select message on clicking message control buttons.
+        if (target.parents(".message_controls").length > 0) {
+            return true;
+        }
+
         return false;
     }
 
@@ -138,7 +172,7 @@ exports.initialize = function () {
             return;
         }
 
-        current_msg_list.select_id(id);
+        message_lists.current.select_id(id);
         compose_actions.respond_to_message({trigger: "message click"});
         e.stopPropagation();
         popovers.hide_all();
@@ -151,8 +185,7 @@ exports.initialize = function () {
         // on the other hand, on mobile it should be done with a long tap.
     } else {
         $("#main_div").on("longtap", ".messagebox", function (e) {
-            // find the correct selection API for the browser.
-            const sel = window.getSelection ? window.getSelection() : document.selection;
+            const sel = window.getSelection();
             // if one matches, remove the current selections.
             // after a longtap that is valid, there should be no text selected.
             if (sel) {
@@ -185,67 +218,16 @@ exports.initialize = function () {
         $(".tooltip").remove();
     });
 
-    $("body").on("mouseenter", ".message_edit_notice", (e) => {
-        if (page_params.realm_allow_edit_history) {
-            $(e.currentTarget).addClass("message_edit_notice_hover");
-        }
-    });
+    $("body").on("click", ".reveal_hidden_message", (e) => {
+        // Hide actions popover to keep its options
+        // in sync with revealed/hidden state of
+        // muted user's message.
+        popovers.hide_actions_popover();
 
-    $("body").on("mouseleave", ".message_edit_notice", (e) => {
-        if (page_params.realm_allow_edit_history) {
-            $(e.currentTarget).removeClass("message_edit_notice_hover");
-        }
-    });
-
-    $("body").on("click", ".message_edit_notice", (e) => {
-        popovers.hide_all();
         const message_id = rows.id($(e.currentTarget).closest(".message_row"));
-        const row = current_msg_list.get_row(message_id);
-        const message = current_msg_list.get(rows.id(row));
-        const message_history_cancel_btn = $("#message-history-cancel");
-
-        if (page_params.realm_allow_edit_history) {
-            message_edit_history.show_history(message);
-            message_history_cancel_btn.trigger("focus");
-        }
+        message_lists.current.view.reveal_hidden_message(message_id);
         e.stopPropagation();
         e.preventDefault();
-    });
-
-    // TOOLTIP FOR MESSAGE REACTIONS
-
-    $("#main_div").on("mouseenter", ".message_reaction", (e) => {
-        e.stopPropagation();
-        const elem = $(e.currentTarget);
-        const local_id = elem.attr("data-reaction-id");
-        const message_id = rows.get_message_id(e.currentTarget);
-        const title = reactions.get_reaction_title_data(message_id, local_id);
-
-        elem.tooltip({
-            title,
-            trigger: "hover",
-            placement: "bottom",
-            animation: false,
-        });
-        elem.tooltip("show");
-        $(".tooltip, .tooltip-inner").css({
-            "margin-left": "15px",
-            "max-width": $(window).width() * 0.6,
-        });
-        // Remove the arrow from the tooltip.
-        $(".tooltip-arrow").remove();
-    });
-
-    $("#main_div").on("mouseleave", ".message_reaction", (e) => {
-        e.stopPropagation();
-        $(e.currentTarget).tooltip("destroy");
-    });
-
-    // DESTROY PERSISTING TOOLTIPS ON HOVER
-
-    $("body").on("mouseenter", ".tooltip", (e) => {
-        e.stopPropagation();
-        $(e.currentTarget).remove();
     });
 
     $("#main_div").on("click", "a.stream", function (e) {
@@ -254,42 +236,24 @@ exports.initialize = function () {
         // so we re-encode the hash.
         const stream_id = Number.parseInt($(this).attr("data-stream-id"), 10);
         if (stream_id) {
-            hashchange.go_to_location(hash_util.by_stream_uri(stream_id));
+            browser_history.go_to_location(hash_util.by_stream_uri(stream_id));
             return;
         }
         window.location.href = $(this).attr("href");
     });
 
-    // USER STATUS MODAL
-
-    $(".user-status-value").on("click", (e) => {
-        e.stopPropagation();
-        const user_status_value = $(e.currentTarget).attr("data-user-status-value");
-        $("input.user_status").val(user_status_value);
-        user_status_ui.toggle_clear_message_button();
-        user_status_ui.update_button();
-    });
-
-    // NOTIFICATION CLICK
-
-    $("body").on("click", ".notification", function () {
-        const payload = $(this).data("narrow");
-        ui_util.change_tab_to("#message_feed_container");
-        narrow.activate(payload.raw_operators, payload.opts_notif);
-    });
-
     // MESSAGE EDITING
 
     $("body").on("click", ".edit_content_button", function (e) {
-        const row = current_msg_list.get_row(rows.id($(this).closest(".message_row")));
-        current_msg_list.select_id(rows.id(row));
+        const row = message_lists.current.get_row(rows.id($(this).closest(".message_row")));
+        message_lists.current.select_id(rows.id(row));
         message_edit.start(row);
         e.stopPropagation();
         popovers.hide_all();
     });
     $("body").on("click", ".always_visible_topic_edit,.on_hover_topic_edit", function (e) {
         const recipient_row = $(this).closest(".recipient_row");
-        message_edit.start_topic_edit(recipient_row);
+        message_edit.start_inline_topic_edit(recipient_row);
         e.stopPropagation();
         popovers.hide_all();
     });
@@ -323,115 +287,153 @@ exports.initialize = function () {
         e.stopPropagation();
         popovers.hide_all();
     });
-    $("body").on("click", ".copy_message", function (e) {
-        const row = $(this).closest(".message_row");
-        message_edit.end_message_row_edit(row);
-        row.find(".alert-msg").text(i18n.t("Copied!"));
-        row.find(".alert-msg").css("display", "block");
-        row.find(".alert-msg").delay(1000).fadeOut(300);
-        if ($(".tooltip").is(":visible")) {
-            $(".tooltip").hide();
-        }
-        e.preventDefault();
-        e.stopPropagation();
-    });
     $("body").on("click", "a", function () {
         if (document.activeElement === this) {
             ui_util.blur_active_element();
         }
     });
-    $("#message_edit_form .send-status-close").on("click", function () {
+    $(".message_edit_form .send-status-close").on("click", function () {
         const row_id = rows.id($(this).closest(".message_row"));
-        const send_status = $("#message-edit-send-status-" + row_id);
+        const send_status = $(`#message-edit-send-status-${CSS.escape(row_id)}`);
         $(send_status).stop(true).fadeOut(200);
     });
-    $("body").on("click", "#message_edit_form [id^='attach_files_']", function (e) {
+    $("body").on("click", ".message_edit_form .compose_upload_file", function (e) {
         e.preventDefault();
 
         const row_id = rows.id($(this).closest(".message_row"));
-        $("#message_edit_file_input_" + row_id).trigger("click");
+        $(`#edit_form_${CSS.escape(row_id)} .file_input`).trigger("click");
     });
 
-    $("body").on("click", "#message_edit_form [id^='markdown_preview_']", function (e) {
+    $("body").on("click", ".message_edit_form .markdown_preview", (e) => {
         e.preventDefault();
-
-        const row_id = rows.id($(this).closest(".message_row"));
-        function $_(selector) {
-            return $(selector + "_" + row_id);
-        }
-
-        const content = $_("#message_edit_content").val();
-        $_("#message_edit_content").hide();
-        $_("#markdown_preview").hide();
-        $_("#undo_markdown_preview").show();
-        $_("#preview_message_area").show();
+        const row = rows.get_closest_row(e.target);
+        const $msg_edit_content = row.find(".message_edit_content");
+        const content = $msg_edit_content.val();
+        $msg_edit_content.hide();
+        row.find(".markdown_preview").hide();
+        row.find(".undo_markdown_preview").show();
+        row.find(".preview_message_area").show();
 
         compose.render_and_show_preview(
-            $_("#markdown_preview_spinner"),
-            $_("#preview_content"),
+            row.find(".markdown_preview_spinner"),
+            row.find(".preview_content"),
             content,
         );
     });
 
-    $("body").on("click", "#message_edit_form [id^='undo_markdown_preview_']", function (e) {
+    $("body").on("click", ".message_edit_form .undo_markdown_preview", (e) => {
         e.preventDefault();
+        const row = rows.get_closest_row(e.target);
+        row.find(".message_edit_content").show();
+        row.find(".undo_markdown_preview").hide();
+        row.find(".preview_message_area").hide();
+        row.find(".preview_content").empty();
+        row.find(".markdown_preview").show();
+    });
 
-        const row_id = rows.id($(this).closest(".message_row"));
-        function $_(selector) {
-            return $(selector + "_" + row_id);
+    // RESOLVED TOPICS
+    $("body").on("click", ".message_header .on_hover_topic_resolve", (e) => {
+        e.stopPropagation();
+        const recipient_row = $(e.target).closest(".recipient_row");
+        const message_id = rows.id_for_recipient_row(recipient_row);
+        const topic_name = $(e.target).attr("data-topic-name");
+        message_edit.toggle_resolve_topic(message_id, topic_name);
+    });
+
+    $("body").on("click", ".message_header .on_hover_topic_unresolve", (e) => {
+        e.stopPropagation();
+        const recipient_row = $(e.target).closest(".recipient_row");
+        const message_id = rows.id_for_recipient_row(recipient_row);
+        const topic_name = $(e.target).attr("data-topic-name");
+        message_edit.toggle_resolve_topic(message_id, topic_name);
+    });
+
+    // TOPIC MUTING
+    function mute_or_unmute_topic($elt, mute_topic) {
+        const stream_id = Number.parseInt($elt.attr("data-stream-id"), 10);
+        const topic = $elt.attr("data-topic-name");
+        if (mute_topic) {
+            muted_topics_ui.mute_topic(stream_id, topic);
+        } else {
+            muted_topics_ui.unmute_topic(stream_id, topic);
         }
+    }
 
-        $_("#message_edit_content").show();
-        $_("#undo_markdown_preview").hide();
-        $_("#preview_message_area").hide();
-        $_("#preview_content").empty();
-        $_("#markdown_preview").show();
-    });
-
-    // MUTING
-
-    $("body").on("click", ".on_hover_topic_mute", (e) => {
+    $("body").on("click", ".message_header .on_hover_topic_mute", (e) => {
         e.stopPropagation();
-        const stream_id = Number.parseInt($(e.currentTarget).attr("data-stream-id"), 10);
-        const topic = $(e.currentTarget).attr("data-topic-name");
-        muting_ui.mute(stream_id, topic);
+        mute_or_unmute_topic($(e.target), true);
     });
 
-    $("body").on("keydown", ".on_hover_topic_mute", convert_enter_to_click);
-
-    $("body").on("click", ".on_hover_topic_unmute", (e) => {
+    $("body").on("click", ".message_header .on_hover_topic_unmute", (e) => {
         e.stopPropagation();
-        const stream_id = Number.parseInt($(e.currentTarget).attr("data-stream-id"), 10);
-        const topic = $(e.currentTarget).attr("data-topic-name");
-        muting_ui.unmute(stream_id, topic);
+        mute_or_unmute_topic($(e.target), false);
     });
-
-    $("body").on("keydown", ".on_hover_topic_unmute", convert_enter_to_click);
 
     // RECENT TOPICS
 
-    $("body").on("click", "#recent_topics_search", (e) => {
+    $("body").on("keydown", ".on_hover_topic_mute", ui_util.convert_enter_to_click);
+
+    $("body").on("click", "#recent_topics_table .on_hover_topic_unmute", (e) => {
         e.stopPropagation();
-        recent_topics.change_focused_element(e, "click");
+        const $elt = $(e.target);
+        const topic_row_index = $elt.closest("tr").index();
+        recent_topics_ui.focus_clicked_element(topic_row_index, recent_topics_ui.COLUMNS.mute);
+        mute_or_unmute_topic($elt, false);
     });
 
-    $("body").on("click", ".on_hover_topic_read", (e) => {
+    $("body").on("keydown", ".on_hover_topic_unmute", ui_util.convert_enter_to_click);
+
+    $("body").on("click", "#recent_topics_table .on_hover_topic_mute", (e) => {
         e.stopPropagation();
+        const $elt = $(e.target);
+        const topic_row_index = $elt.closest("tr").index();
+        recent_topics_ui.focus_clicked_element(topic_row_index, recent_topics_ui.COLUMNS.mute);
+        mute_or_unmute_topic($elt, true);
+    });
+
+    $("body").on("click", "#recent_topics_search", (e) => {
+        e.stopPropagation();
+        recent_topics_ui.change_focused_element($(e.target), "click");
+    });
+
+    $("body").on("click", "#recent_topics_table .on_hover_topic_read", (e) => {
+        e.stopPropagation();
+        const topic_row_index = $(e.target).closest("tr").index();
+        recent_topics_ui.focus_clicked_element(topic_row_index, recent_topics_ui.COLUMNS.read);
         const stream_id = Number.parseInt($(e.currentTarget).attr("data-stream-id"), 10);
         const topic = $(e.currentTarget).attr("data-topic-name");
         unread_ops.mark_topic_as_read(stream_id, topic);
     });
 
-    $("body").on("keydown", ".on_hover_topic_read", convert_enter_to_click);
+    $("body").on("keydown", ".on_hover_topic_read", ui_util.convert_enter_to_click);
 
     $("body").on("click", ".btn-recent-filters", (e) => {
         e.stopPropagation();
-        recent_topics.set_filter(e.currentTarget.dataset.filter);
-        recent_topics.update_filters_view();
+        recent_topics_ui.change_focused_element($(e.target), "click");
+        recent_topics_ui.set_filter(e.currentTarget.dataset.filter);
+        recent_topics_ui.update_filters_view();
+        recent_topics_ui.revive_current_focus();
+    });
+
+    $("body").on("click", "td.recent_topic_stream", (e) => {
+        e.stopPropagation();
+        const topic_row_index = $(e.target).closest("tr").index();
+        recent_topics_ui.focus_clicked_element(topic_row_index, recent_topics_ui.COLUMNS.stream);
+        window.location.href = $(e.currentTarget).find("a").attr("href");
     });
 
     $("body").on("click", "td.recent_topic_name", (e) => {
         e.stopPropagation();
+        // The element's parent may re-render while it is being passed to
+        // other functions, so, we get topic_key first.
+        const topic_row = $(e.target).closest("tr");
+        const topic_key = topic_row.attr("id").slice("recent_topics:".length - 1);
+        const topic_row_index = topic_row.index();
+        recent_topics_ui.focus_clicked_element(
+            topic_row_index,
+            recent_topics_ui.COLUMNS.topic,
+            topic_key,
+        );
         window.location.href = $(e.currentTarget).find("a").attr("href");
     });
 
@@ -440,7 +442,7 @@ exports.initialize = function () {
         "keyup",
         "#recent_topics_search",
         _.debounce(() => {
-            recent_topics.update_filters_view();
+            recent_topics_ui.update_filters_view();
             // Wait for user to go idle before initiating search.
         }, 300),
     );
@@ -448,7 +450,7 @@ exports.initialize = function () {
     $("body").on("click", "#recent_topics_search_clear", (e) => {
         e.stopPropagation();
         $("#recent_topics_search").val("");
-        recent_topics.update_filters_view();
+        recent_topics_ui.update_filters_view();
     });
 
     // RECIPIENT BARS
@@ -457,8 +459,8 @@ exports.initialize = function () {
         const group = rows.get_closest_group(narrow_link_elem);
         const msg_id = rows.id_for_recipient_row(group);
 
-        const nearest = current_msg_list.get(msg_id);
-        const selected = current_msg_list.selected_message();
+        const nearest = message_lists.current.get(msg_id);
+        const selected = message_lists.current.selected_message();
         if (util.same_recipient(nearest, selected)) {
             return selected.id;
         }
@@ -521,50 +523,67 @@ exports.initialize = function () {
         });
 
     function do_render_buddy_list_tooltip(elem, title_data) {
-        elem.tooltip({
-            template: render_buddy_list_tooltip(),
-            title: render_buddy_list_tooltip_content(title_data),
-            html: true,
-            trigger: "hover",
-            placement: "bottom",
-            animation: false,
+        let placement = "left";
+        let observer;
+        if (window.innerWidth < media_breakpoints_num.md) {
+            // On small devices display tooltips based on available space.
+            // This will default to "bottom" placement for this tooltip.
+            placement = "auto";
+        }
+        tippy(elem[0], {
+            // Quickly display and hide right sidebar tooltips
+            // so that they don't stick and overlap with
+            // each other.
+            delay: 0,
+            content: render_buddy_list_tooltip_content(title_data),
+            arrow: true,
+            placement,
+            allowHTML: true,
+            showOnCreate: true,
+            onHidden: (instance) => {
+                instance.destroy();
+                observer.disconnect();
+            },
+            onShow: (instance) => {
+                // For both buddy list and top left corner pm list, `target_node`
+                // is their parent `ul` element. We cannot use MutationObserver
+                // directly on the reference element because it will be removed
+                // and we need to attach it on an element which will remain in the
+                // DOM which is their parent `ul`.
+                const target_node = $(instance.reference).parents("ul").get(0);
+                // We only need to know if any of the `li` elements were removed.
+                const config = {attributes: false, childList: true, subtree: false};
+                const callback = function (mutationsList) {
+                    for (const mutation of mutationsList) {
+                        // Hide instance if reference is in the removed node list.
+                        if (
+                            Array.prototype.includes.call(
+                                mutation.removedNodes,
+                                instance.reference.parentElement,
+                            )
+                        ) {
+                            instance.hide();
+                        }
+                    }
+                };
+                observer = new MutationObserver(callback);
+                observer.observe(target_node, config);
+            },
+            appendTo: () => document.body,
         });
-        elem.tooltip("show");
-
-        $(".tooltip").css("left", elem.pageX + "px");
-        $(".tooltip").css("top", elem.pageY + "px");
     }
 
     // BUDDY LIST TOOLTIPS
-    $("#user_presences").on(
-        "mouseenter",
-        ".user-presence-link, .user_sidebar_entry .user_circle, .user_sidebar_entry .selectable_sidebar_block",
-        (e) => {
-            e.stopPropagation();
-            const elem = $(e.currentTarget)
-                .closest(".user_sidebar_entry")
-                .find(".user-presence-link");
-            const user_id_string = elem.attr("data-user-id");
-            const title_data = buddy_data.get_title_data(user_id_string, false);
-            do_render_buddy_list_tooltip(elem, title_data);
-        },
-    );
-
-    $("#user_presences").on(
-        "mouseleave click",
-        ".user-presence-link, .user_sidebar_entry .user_circle, .user_sidebar_entry .selectable_sidebar_block",
-        (e) => {
-            e.stopPropagation();
-            const elem = $(e.currentTarget)
-                .closest(".user_sidebar_entry")
-                .find(".user-presence-link");
-            $(elem).tooltip("destroy");
-        },
-    );
+    $("#user_presences").on("mouseenter", ".selectable_sidebar_block", (e) => {
+        e.stopPropagation();
+        const elem = $(e.currentTarget).closest(".user_sidebar_entry").find(".user-presence-link");
+        const user_id_string = elem.attr("data-user-id");
+        const title_data = buddy_data.get_title_data(user_id_string, false);
+        do_render_buddy_list_tooltip(elem.parent(), title_data);
+    });
 
     // PM LIST TOOLTIPS
     $("body").on("mouseenter", "#pm_user_status", (e) => {
-        $(".tooltip").remove();
         e.stopPropagation();
         const elem = $(e.currentTarget);
         const user_ids_string = elem.attr("data-user-ids-string");
@@ -575,34 +594,18 @@ exports.initialize = function () {
         do_render_buddy_list_tooltip(elem, title_data);
     });
 
-    $("body").on("mouseleave", "#pm_user_status", (e) => {
-        e.stopPropagation();
-        $(e.currentTarget).tooltip("destroy");
-    });
-
-    // HOME
-
-    $(".brand").on("click", (e) => {
-        if (overlays.is_active()) {
-            overlays.close_active();
-        } else {
-            narrow.restore_home_state();
-        }
-        navigate.maybe_scroll_to_selected();
-        e.preventDefault();
-    });
-
     // MISC
 
-    (function () {
+    {
         const sel = ["#stream_filters", "#global_filters", "#user_presences"].join(", ");
 
         $(sel).on("click", "a", function () {
             this.blur();
         });
-    })();
+    }
 
     popovers.register_click_handlers();
+    user_profile.register_click_handlers();
     emoji_picker.register_click_handlers();
     stream_popover.register_click_handlers();
     notifications.register_click_handlers();
@@ -615,15 +618,6 @@ exports.initialize = function () {
         server_events.restart_get_events({dont_block: true});
     });
 
-    // this will hide the alerts that you click "x" on.
-    $("body").on("click", ".alert-box > div .exit", function () {
-        const $alert = $(this).closest(".alert-box > div");
-        $alert.addClass("fade-out");
-        setTimeout(() => {
-            $alert.removeClass("fade-out show");
-        }, 300);
-    });
-
     $("#settings_page").on("click", ".collapse-settings-btn", () => {
         settings_toggle.toggle_org_setting_collapse();
     });
@@ -632,60 +626,31 @@ exports.initialize = function () {
         popovers.hide_all();
     });
 
-    $(".alert-box").on("click", ".stackframe .expand", function () {
-        $(this).parent().siblings(".code-context").toggle("fast");
-    });
-
     // COMPOSE
 
-    // NB: This just binds to current elements, and won't bind to elements
-    // created after ready() is called.
-    $("#compose-send-status .compose-send-status-close").on("click", () => {
-        $("#compose-send-status").stop(true).fadeOut(500);
-    });
-    $("#nonexistent_stream_reply_error .compose-send-status-close").on("click", () => {
-        $("#nonexistent_stream_reply_error").stop(true).fadeOut(500);
+    $("body").on("click", "#compose-send-status .compose-send-status-close", () => {
+        compose_error.hide();
     });
 
-    $(".compose_stream_button").on("click", () => {
-        popovers.hide_mobile_message_buttons_popover();
-        compose_actions.start("stream", {trigger: "new topic button"});
-    });
-    $(".compose_private_button").on("click", () => {
-        popovers.hide_mobile_message_buttons_popover();
-        compose_actions.start("private");
-    });
-
-    $("body").on("click", ".compose_mobile_stream_button", () => {
-        popovers.hide_mobile_message_buttons_popover();
-        compose_actions.start("stream", {trigger: "new topic button"});
-    });
-    $("body").on("click", ".compose_mobile_private_button", () => {
-        popovers.hide_mobile_message_buttons_popover();
-        compose_actions.start("private");
-    });
-
-    $(".compose_reply_button").on("click", () => {
-        compose_actions.respond_to_message({trigger: "reply button"});
-    });
-
-    $(".empty_feed_compose_stream").on("click", (e) => {
+    $("body").on("click", ".empty_feed_compose_stream", (e) => {
         compose_actions.start("stream", {trigger: "empty feed message"});
         e.preventDefault();
     });
-    $(".empty_feed_compose_private").on("click", (e) => {
+    $("body").on("click", ".empty_feed_compose_private", (e) => {
         compose_actions.start("private", {trigger: "empty feed message"});
         e.preventDefault();
     });
 
     $("body").on("click", "[data-overlay-trigger]", function () {
         const target = $(this).attr("data-overlay-trigger");
-        hashchange.go_to_location(target);
+        browser_history.go_to_location(target);
     });
 
     function handle_compose_click(e) {
         // Emoji clicks should be handled by their own click handler in emoji_picker.js
-        if ($(e.target).is("#emoji_map, img.emoji, .drag")) {
+        if (
+            $(e.target).is(".emoji_map, img.emoji, .drag, .compose_gif_icon, .compose_control_menu")
+        ) {
             return;
         }
 
@@ -698,7 +663,7 @@ exports.initialize = function () {
         // Don't let clicks in the compose area count as
         // "unfocusing" our compose -- in other words, e.g.
         // clicking "Press Enter to send" should not
-        // trigger the composebox-closing code above.
+        // trigger the composebox-closing code in MAIN CLICK HANDLER.
         // But do allow our formatting link.
         if (!$(e.target).is("a")) {
             e.stopPropagation();
@@ -707,19 +672,17 @@ exports.initialize = function () {
         popovers.hide_all();
     }
 
-    $("#compose_buttons").on("click", handle_compose_click);
-    $(".compose-content").on("click", handle_compose_click);
+    $("body").on("click", "#compose-content", handle_compose_click);
 
-    $("#compose_close").on("click", () => {
+    $("body").on("click", "#compose_close", () => {
         compose_actions.cancel();
     });
 
-    $("#streams_inline_cog").on("click", (e) => {
-        e.stopPropagation();
-        hashchange.go_to_location("streams/subscribed");
-    });
+    // LEFT SIDEBAR
 
-    $("#streams_filter_icon").on("click", (e) => {
+    $("body").on("click", "#clear_search_topic_button", topic_list.clear_topic_search);
+
+    $(".streams_filter_icon").on("click", (e) => {
         e.stopPropagation();
         stream_list.toggle_filter_displayed(e);
     });
@@ -778,7 +741,7 @@ exports.initialize = function () {
 
     // Don't focus links on middle click.
     $("body").on("mouseup", "a", (e) => {
-        if (e.which === 2) {
+        if (e.button === 1) {
             // middle click
             e.target.blur();
         }
@@ -786,84 +749,6 @@ exports.initialize = function () {
 
     // Don't focus links on context menu.
     $("body").on("contextmenu", "a", (e) => e.target.blur());
-
-    (function () {
-        const map = {
-            ".stream-description-editable": {
-                on_start: stream_edit.set_raw_description,
-                on_save: stream_edit.change_stream_description,
-            },
-            ".stream-name-editable": {
-                on_start: null,
-                on_save: stream_edit.change_stream_name,
-            },
-        };
-
-        $(document).on("keydown", ".editable-section", function (e) {
-            e.stopPropagation();
-            // Cancel editing description if Escape key is pressed.
-            if (e.which === 27) {
-                $("[data-finish-editing='.stream-description-editable']").hide();
-                $(this).attr("contenteditable", false);
-                $(this).text($(this).attr("data-prev-text"));
-                $("[data-make-editable]").html("");
-            } else if (e.which === 13) {
-                $(this).siblings(".checkmark").trigger("click");
-            }
-        });
-
-        $(document).on("drop", ".editable-section", () => false);
-
-        $(document).on("input", ".editable-section", function () {
-            // if there are any child nodes, inclusive of <br> which means you
-            // have lines in your description or title, you're doing something
-            // wrong.
-            for (let x = 0; x < this.childNodes.length; x += 1) {
-                if (this.childNodes[x].nodeType !== 3) {
-                    this.textContent = this.textContent.replace(/\n/, "");
-                    break;
-                }
-            }
-        });
-
-        $("body").on("click", "[data-make-editable]", function () {
-            const selector = $(this).attr("data-make-editable");
-            const edit_area = $(this).parent().find(selector);
-            $(selector).removeClass("stream-name-edit-box");
-            if (edit_area.attr("contenteditable") === "true") {
-                $("[data-finish-editing='" + selector + "']").hide();
-                edit_area.attr("contenteditable", false);
-                edit_area.text(edit_area.attr("data-prev-text"));
-                $(this).html("");
-            } else {
-                $("[data-finish-editing='" + selector + "']").show();
-
-                $(selector).addClass("stream-name-edit-box");
-                edit_area
-                    .attr("data-prev-text", edit_area.text().trim())
-                    .attr("contenteditable", true);
-
-                if (map[selector].on_start) {
-                    map[selector].on_start(this, edit_area);
-                }
-
-                ui_util.place_caret_at_end(edit_area[0]);
-
-                $(this).html("&times;");
-            }
-        });
-
-        $("body").on("click", "[data-finish-editing]", function (e) {
-            const selector = $(this).attr("data-finish-editing");
-            $(selector).removeClass("stream-name-edit-box");
-            if (map[selector].on_save) {
-                map[selector].on_save(e);
-                $(this).hide();
-                $(this).parent().find(selector).attr("contenteditable", false);
-                $("[data-make-editable='" + selector + "']").html("");
-            }
-        });
-    })();
 
     // HOTSPOTS
 
@@ -882,7 +767,7 @@ exports.initialize = function () {
 
         overlays.open_overlay({
             name: overlay_name,
-            overlay: $("#" + overlay_name),
+            overlay: $(`#${CSS.escape(overlay_name)}`),
             on_close: function () {
                 // close popover
                 $(this).css({display: "block"});
@@ -912,7 +797,7 @@ exports.initialize = function () {
         hotspots.post_hotspot_as_read(hotspot_name);
 
         overlays.close_overlay(overlay_name);
-        $("#hotspot_" + hotspot_name + "_icon").remove();
+        $(`#hotspot_${CSS.escape(hotspot_name)}_icon`).remove();
     });
 
     $("body").on("click", ".hotspot-button", (e) => {
@@ -921,11 +806,21 @@ exports.initialize = function () {
 
         hotspots.post_hotspot_as_read("intro_reply");
         hotspots.close_hotspot_icon($("#hotspot_intro_reply_icon"));
+        $("#hotspot_intro_reply_icon").remove();
     });
 
     // stop propagation
     $("body").on("click", ".hotspot.overlay .hotspot-popover", (e) => {
         e.stopPropagation();
+    });
+
+    $("body").on("hidden.bs.modal", () => {
+        // Enable mouse events for the background as the modal closes.
+        overlays.enable_background_mouse_events();
+
+        // TODO: Remove this once Bootstrap is upgraded.
+        // See: https://github.com/zulip/zulip/pull/18720
+        $(".modal.in").removeClass("in");
     });
 
     // MAIN CLICK HANDLER
@@ -944,22 +839,38 @@ exports.initialize = function () {
                 '.popover-inner, #user-profile-modal, .emoji-info-popover, .app-main [class^="column-"].expanded',
             ).has(e.target).length === 0
         ) {
-            popovers.hide_all();
-        }
-
-        // If user clicks outside an active modal
-        if ($(".modal.in").has(e.target).length === 0) {
-            // Enable mouse events for the background as the modal closes
-            $(".overlay.show").attr("style", null);
+            // Since tippy instance can handle outside clicks on their own,
+            // we don't need to trigger them from here.
+            // This fixes the bug of `hideAll` being called
+            // after a tippy popover has been triggered which hides
+            // the popover without being displayed.
+            const not_hide_tippy_instances = true;
+            popovers.hide_all(not_hide_tippy_instances);
         }
 
         if (compose_state.composing()) {
-            if ($(e.target).closest("a").length > 0) {
-                // Refocus compose message text box if link is clicked
+            if (
+                $(e.target).closest("a").length > 0 ||
+                $(e.target).closest(".copy_codeblock").length > 0
+            ) {
+                // Refocus compose message text box if one clicks an external
+                // link/url to view something else while composing a message.
+                // See issue #4331 for more details.
+                //
+                // We do the same when copying a code block, since the
+                // most likely next action within Zulip is to paste it
+                // into compose and modify it.
                 $("#compose-textarea").trigger("focus");
                 return;
             } else if (
                 !window.getSelection().toString() &&
+                // Clicking any input or text area should not close
+                // the compose box; this means using the sidebar
+                // filters or search widgets won't unnecessarily close
+                // compose.
+                !$(e.target).closest("input").length &&
+                !$(e.target).closest("textarea").length &&
+                !$(e.target).closest("select").length &&
                 // Clicks inside an overlay, popover, custom
                 // modal, or backdrop of one of the above
                 // should not have any effect on the compose
@@ -967,6 +878,8 @@ exports.initialize = function () {
                 !$(e.target).closest(".overlay").length &&
                 !$(e.target).closest(".popover").length &&
                 !$(e.target).closest(".modal").length &&
+                !$(e.target).closest(".micromodal").length &&
+                !$(e.target).closest("[data-tippy-root]").length &&
                 !$(e.target).closest(".modal-backdrop").length &&
                 $(e.target).closest("body").length
             ) {
@@ -989,6 +902,4 @@ exports.initialize = function () {
     $(".settings-header.mobile .fa-chevron-left").on("click", () => {
         settings_panel_menu.mobile_deactivate_section();
     });
-};
-
-window.click_handlers = exports;
+}

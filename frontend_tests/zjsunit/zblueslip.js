@@ -1,6 +1,6 @@
 "use strict";
 
-exports.make_zblueslip = function () {
+function make_zblueslip() {
     const lib = {};
 
     const opts = {
@@ -119,9 +119,11 @@ exports.make_zblueslip = function () {
         return ex.message;
     };
 
-    lib.start_timing = () => () => {};
+    lib.measure_time = (label, f) => f();
 
     lib.preview_node = (node) => "node:" + node;
 
     return lib;
-};
+}
+
+module.exports = make_zblueslip();

@@ -1,23 +1,30 @@
-"use strict";
+import autosize from "autosize";
+import $ from "jquery";
 
-const autosize = require("autosize");
+import * as blueslip from "./blueslip";
+import {$t} from "./i18n";
+import {MessageListData} from "./message_list_data";
+import {MessageListView} from "./message_list_view";
+import * as narrow_banner from "./narrow_banner";
+import * as narrow_state from "./narrow_state";
+import {page_params} from "./page_params";
+import * as stream_data from "./stream_data";
 
-exports.narrowed = undefined;
-exports.set_narrowed = function (value) {
-    exports.narrowed = value;
-};
+export let narrowed;
 
-class MessageList {
+export function set_narrowed(value) {
+    narrowed = value;
+}
+
+export class MessageList {
     constructor(opts) {
         if (opts.data) {
-            this.muting_enabled = opts.data.muting_enabled;
             this.data = opts.data;
         } else {
             const filter = opts.filter;
 
-            this.muting_enabled = opts.muting_enabled;
             this.data = new MessageListData({
-                muting_enabled: this.muting_enabled,
+                excludes_muted_topics: opts.excludes_muted_topics,
                 filter,
             });
         }
@@ -61,14 +68,14 @@ class MessageList {
             render_info = this.append_to_view(bottom_messages, opts);
         }
 
-        if (this === exports.narrowed && !this.empty()) {
+        if (this === narrowed && !this.empty()) {
             // If adding some new messages to the message tables caused
             // our current narrow to no longer be empty, hide the empty
             // feed placeholder text.
-            narrow.hide_empty_narrow_message();
+            narrow_banner.hide_empty_narrow_message();
         }
 
-        if (this === exports.narrowed && !this.empty() && this.selected_id() === -1) {
+        if (this === narrowed && !this.empty() && this.selected_id() === -1) {
             // And also select the newly arrived message.
             this.select_id(this.selected_id(), {then_scroll: true, use_closest: true});
         }
@@ -120,13 +127,11 @@ class MessageList {
         return this.data.can_mark_messages_read();
     }
 
-    clear(opts) {
-        opts = {clear_selected_id: true, ...opts};
-
+    clear({clear_selected_id = true} = {}) {
         this.data.clear();
         this.view.clear_rendering_state(true);
 
-        if (opts.clear_selected_id) {
+        if (clear_selected_id) {
             this.data.clear_selected_id();
         }
     }
@@ -184,7 +189,8 @@ class MessageList {
                 id,
                 items_length: this.data.num_items(),
             };
-            throw new Error("Cannot select id -1", error_data);
+            blueslip.error("Cannot select id -1", error_data);
+            throw new Error("Cannot select id -1");
         }
 
         id = closest_id;
@@ -225,19 +231,22 @@ class MessageList {
     }
 
     subscribed_bookend_content(stream_name) {
-        return i18n.t("You subscribed to stream __stream__", {stream: stream_name});
+        return $t({defaultMessage: "You subscribed to stream {stream}"}, {stream: stream_name});
     }
 
     unsubscribed_bookend_content(stream_name) {
-        return i18n.t("You unsubscribed from stream __stream__", {stream: stream_name});
+        return $t({defaultMessage: "You unsubscribed from stream {stream}"}, {stream: stream_name});
     }
 
     not_subscribed_bookend_content(stream_name) {
-        return i18n.t("You are not subscribed to stream __stream__", {stream: stream_name});
+        return $t(
+            {defaultMessage: "You are not subscribed to stream {stream}"},
+            {stream: stream_name},
+        );
     }
 
     deactivated_bookend_content() {
-        return i18n.t("This stream has been deactivated");
+        return $t({defaultMessage: "This stream has been deactivated"});
     }
 
     // Maintains a trailing bookend element explaining any changes in
@@ -254,7 +263,7 @@ class MessageList {
         }
         let trailing_bookend_content;
         let show_button = true;
-        const subscribed = stream_data.is_subscribed(stream_name);
+        const subscribed = stream_data.is_subscribed_by_name(stream_name);
         const sub = stream_data.get_sub(stream_name);
         if (sub === undefined) {
             trailing_bookend_content = this.deactivated_bookend_content();
@@ -287,11 +296,9 @@ class MessageList {
         this.append_to_view(viewable_messages, opts);
     }
 
-    append_to_view(messages, opts) {
-        opts = {messages_are_new: false, ...opts};
-
+    append_to_view(messages, {messages_are_new = false} = {}) {
         this.num_appends += 1;
-        const render_info = this.view.append(messages, opts.messages_are_new);
+        const render_info = this.view.append(messages, messages_are_new);
         return render_info;
     }
 
@@ -323,6 +330,7 @@ class MessageList {
         recipient_row.find(".edit_content_button").hide();
         recipient_row.find(".stream_topic").hide();
         recipient_row.find(".topic_edit").show();
+        recipient_row.find(".always_visible_topic_edit").hide();
     }
 
     hide_edit_topic_on_recipient_row(recipient_row) {
@@ -331,6 +339,7 @@ class MessageList {
         recipient_row.find(".edit_content_button").show();
         recipient_row.find(".topic_edit_form").empty();
         recipient_row.find(".topic_edit").hide();
+        recipient_row.find(".always_visible_topic_edit").show();
     }
 
     show_message_as_read(message, options) {
@@ -356,11 +365,11 @@ class MessageList {
         this.view.clear_rendering_state(false);
         this.view.update_render_window(this.selected_idx(), false);
 
-        if (this === exports.narrowed) {
+        if (this === narrowed) {
             if (this.empty()) {
-                narrow.show_empty_narrow_message();
+                narrow_banner.show_empty_narrow_message();
             } else {
-                narrow.hide_empty_narrow_message();
+                narrow_banner.hide_empty_narrow_message();
             }
         }
         this.rerender_view();
@@ -375,10 +384,20 @@ class MessageList {
     }
 
     update_muting_and_rerender() {
-        if (!this.muting_enabled) {
-            return;
-        }
         this.data.update_items_for_muting();
+        // We need to rerender whether or not the narrow hides muted
+        // topics, because we need to update recipient bars for topics
+        // we've muted when we are displaying those topics.
+        //
+        // We could avoid a rerender if we can provide that this
+        // narrow cannot have contained messages to muted topics
+        // either before or after the state change.  The right place
+        // to do this is in the message_events.js code path for
+        // processing topic edits, since that's the only place we'll
+        // call this frequently anyway.
+        //
+        // But in any case, we need to rerender the list for user muting,
+        // to make sure only the right messages are hidden.
         this.rerender();
     }
 
@@ -409,18 +428,3 @@ class MessageList {
         return this.data.get_last_message_sent_by_me();
     }
 }
-exports.MessageList = MessageList;
-
-exports.all = new MessageList({
-    muting_enabled: false,
-});
-
-// We stop autoscrolling when the user is clearly in the middle of
-// doing something.  Be careful, though, if you try to capture
-// mousemove, then you will have to contend with the autoscroll
-// itself generating mousemove events.
-$(document).on("message_selected.zulip wheel", () => {
-    message_viewport.stop_auto_scrolling();
-});
-
-window.message_list = exports;

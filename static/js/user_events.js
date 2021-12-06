@@ -1,13 +1,28 @@
-"use strict";
-
 // This module is kind of small, but it will help us keep
 // server_events.js simple while breaking some circular
 // dependencies that existed when this code was in people.js.
 // (We should do bot updates here too.)
-const people = require("./people");
-const settings_config = require("./settings_config");
+import $ from "jquery";
 
-exports.update_person = function update(person) {
+import * as activity from "./activity";
+import * as blueslip from "./blueslip";
+import * as compose from "./compose";
+import * as gear_menu from "./gear_menu";
+import * as message_live_update from "./message_live_update";
+import * as narrow_state from "./narrow_state";
+import {page_params} from "./page_params";
+import * as people from "./people";
+import * as pm_list from "./pm_list";
+import * as settings_account from "./settings_account";
+import * as settings_config from "./settings_config";
+import * as settings_linkifiers from "./settings_linkifiers";
+import * as settings_org from "./settings_org";
+import * as settings_profile_fields from "./settings_profile_fields";
+import * as settings_realm_user_settings_defaults from "./settings_realm_user_settings_defaults";
+import * as settings_streams from "./settings_streams";
+import * as settings_users from "./settings_users";
+
+export const update_person = function update(person) {
     const person_obj = people.get_by_user_id(person.user_id);
 
     if (!person_obj) {
@@ -52,10 +67,12 @@ exports.update_person = function update(person) {
     }
 
     if (Object.prototype.hasOwnProperty.call(person, "role")) {
+        person_obj.role = person.role;
         person_obj.is_owner = person.role === settings_config.user_role_values.owner.code;
         person_obj.is_admin =
             person.role === settings_config.user_role_values.admin.code || person_obj.is_owner;
         person_obj.is_guest = person.role === settings_config.user_role_values.guest.code;
+        person_obj.is_moderator = person.role === settings_config.user_role_values.moderator.code;
         settings_users.update_user_data(person.user_id, person);
 
         if (people.is_my_user_id(person.user_id) && page_params.is_owner !== person_obj.is_owner) {
@@ -70,6 +87,21 @@ exports.update_person = function update(person) {
             settings_org.maybe_disable_widgets();
             settings_profile_fields.maybe_disable_widgets();
             settings_streams.maybe_disable_widgets();
+            settings_realm_user_settings_defaults.maybe_disable_widgets();
+        }
+
+        if (
+            people.is_my_user_id(person.user_id) &&
+            page_params.is_moderator !== person_obj.is_moderator
+        ) {
+            page_params.is_moderator = person_obj.is_moderator;
+        }
+    }
+
+    if (Object.prototype.hasOwnProperty.call(person, "is_billing_admin")) {
+        person_obj.is_billing_admin = person.is_billing_admin;
+        if (people.is_my_user_id(person.user_id)) {
+            page_params.is_billing_admin = person_obj.is_billing_admin;
         }
     }
 
@@ -100,5 +132,3 @@ exports.update_person = function update(person) {
         person_obj.bot_owner_id = person.bot_owner_id;
     }
 };
-
-window.user_events = exports;

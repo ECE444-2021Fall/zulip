@@ -1,10 +1,17 @@
 import md5 from "blueimp-md5";
+import {format, utcToZonedTime} from "date-fns-tz";
 import _ from "lodash";
-import moment from "moment-timezone";
 
 import * as typeahead from "../shared/js/typeahead";
 
+import * as blueslip from "./blueslip";
 import {FoldDict} from "./fold_dict";
+import {$t} from "./i18n";
+import * as message_user_ids from "./message_user_ids";
+import * as muted_users from "./muted_users";
+import {page_params} from "./page_params";
+import * as reload_state from "./reload_state";
+import * as settings_config from "./settings_config";
 import * as settings_data from "./settings_data";
 import * as util from "./util";
 
@@ -54,6 +61,25 @@ export function get_by_user_id(user_id, ignore_missing) {
         return undefined;
     }
     return people_by_user_id_dict.get(user_id);
+}
+
+export function validate_user_ids(user_ids) {
+    const good_ids = [];
+    const bad_ids = [];
+
+    for (const user_id of user_ids) {
+        if (people_by_user_id_dict.has(user_id)) {
+            good_ids.push(user_id);
+        } else {
+            bad_ids.push(user_id);
+        }
+    }
+
+    if (bad_ids.length > 0) {
+        blueslip.warn(`We have untracked user_ids: ${bad_ids}`);
+    }
+
+    return good_ids;
 }
 
 export function get_by_email(email) {
@@ -140,6 +166,10 @@ export function is_known_user_id(user_id) {
     return people_by_user_id_dict.has(user_id);
 }
 
+export function is_known_user(user) {
+    return user && is_known_user_id(user.user_id);
+}
+
 function sort_numerically(user_ids) {
     user_ids.sort((a, b) => a - b);
 
@@ -153,11 +183,9 @@ export function huddle_string(message) {
 
     let user_ids = message.display_recipient.map((recip) => recip.id);
 
-    function is_huddle_recip(user_id) {
-        return user_id && people_by_user_id_dict.has(user_id) && !is_my_user_id(user_id);
-    }
-
-    user_ids = user_ids.filter(is_huddle_recip);
+    user_ids = user_ids.filter(
+        (user_id) => user_id && people_by_user_id_dict.has(user_id) && !is_my_user_id(user_id),
+    );
 
     if (user_ids.length <= 1) {
         return undefined;
@@ -235,24 +263,19 @@ export function get_user_time_preferences(user_id) {
 export function get_user_time(user_id) {
     const user_pref = get_user_time_preferences(user_id);
     if (user_pref) {
-        return moment().tz(user_pref.timezone).format(user_pref.format);
+        const current_date = utcToZonedTime(new Date(), user_pref.timezone);
+        return format(current_date, user_pref.format, {timeZone: user_pref.timezone});
     }
     return undefined;
 }
 
 export function get_user_type(user_id) {
     const user_profile = get_by_user_id(user_id);
-
-    if (user_profile.is_owner) {
-        return i18n.t("Owner");
-    } else if (user_profile.is_admin) {
-        return i18n.t("Administrator");
-    } else if (user_profile.is_guest) {
-        return i18n.t("Guest");
-    } else if (user_profile.is_bot) {
-        return i18n.t("Bot");
+    if (user_profile.is_bot) {
+        return $t({defaultMessage: "Bot"});
     }
-    return i18n.t("Member");
+
+    return settings_config.user_role_map.get(user_profile.role);
 }
 
 export function emails_strings_to_user_ids_string(emails_string) {
@@ -276,15 +299,24 @@ export function email_list_to_user_ids_string(emails) {
     return user_ids.join(",");
 }
 
-export function safe_full_names(user_ids) {
-    let names = user_ids.map((user_id) => {
-        const person = people_by_user_id_dict.get(user_id);
-        return person && person.full_name;
+export function get_full_names_for_poll_option(user_ids) {
+    return get_display_full_names(user_ids).join(", ");
+}
+
+export function get_display_full_names(user_ids) {
+    return user_ids.map((user_id) => {
+        const person = get_by_user_id(user_id);
+        if (!person) {
+            blueslip.error("Unknown user id " + user_id);
+            return "?";
+        }
+
+        if (muted_users.is_user_muted(user_id)) {
+            return $t({defaultMessage: "Muted user"});
+        }
+
+        return person.full_name;
     });
-
-    names = names.filter(Boolean);
-
-    return names.join(", ");
 }
 
 export function get_full_name(user_id) {
@@ -302,7 +334,7 @@ export function get_recipients(user_ids_string) {
         return my_full_name();
     }
 
-    const names = other_ids.map(get_full_name).sort();
+    const names = get_display_full_names(other_ids).sort();
     return names.join(", ");
 }
 
@@ -587,8 +619,9 @@ export function exclude_me_from_string(user_ids_string) {
 }
 
 export function format_small_avatar_url(raw_url) {
-    const url = raw_url + "&s=50";
-    return url;
+    const url = new URL(raw_url, location);
+    url.search += (url.search ? "&" : "") + "s=50";
+    return url.href;
 }
 
 export function sender_is_bot(message) {
@@ -626,11 +659,32 @@ export function small_avatar_url_for_person(person) {
     return format_small_avatar_url("/avatar/" + person.user_id);
 }
 
-export function sender_info_with_small_avatar_urls_for_sender_ids(sender_ids) {
+function medium_gravatar_url_for_email(email) {
+    const hash = md5(email.toLowerCase());
+    const avatar_url = "https://secure.gravatar.com/avatar/" + hash + "?d=identicon";
+    const url = new URL(avatar_url, location);
+    url.search += (url.search ? "&" : "") + "s=500";
+    return url.href;
+}
+
+export function medium_avatar_url_for_person(person) {
+    /* Unlike the small avatar URL case, we don't generally have a
+     * medium avatar URL included in person objects. So only have the
+     * gravatar and server endpoints here. */
+
+    if (person.avatar_url === null) {
+        return medium_gravatar_url_for_email(person.email);
+    }
+
+    return "/avatar/" + person.user_id + "/medium";
+}
+
+export function sender_info_for_recent_topics_row(sender_ids) {
     const senders_info = [];
     for (const id of sender_ids) {
         const sender = {...get_by_user_id(id)};
         sender.avatar_url_small = small_avatar_url_for_person(sender);
+        sender.is_muted = muted_users.is_user_muted(id);
         senders_info.push(sender);
     }
     return senders_info;
@@ -697,7 +751,10 @@ export function is_valid_email_for_compose(email) {
     if (!person) {
         return false;
     }
-    return active_user_dict.has(person.user_id);
+
+    // we allow deactivated users in compose so that
+    // one can attempt to reply to threads that contained them.
+    return true;
 }
 
 export function is_valid_bulk_emails_for_compose(emails) {
@@ -837,6 +894,14 @@ export function incr_recipient_count(user_id) {
     pm_recipient_count_dict.set(user_id, old_count + 1);
 }
 
+export function clear_recipient_counts_for_testing() {
+    pm_recipient_count_dict.clear();
+}
+
+export function set_recipient_count_for_testing(user_id, count) {
+    pm_recipient_count_dict.set(user_id, count);
+}
+
 export function get_message_people() {
     /*
         message_people are roughly the people who have
@@ -852,7 +917,7 @@ export function get_message_people() {
         at the message_store code to see the precise
         semantics
     */
-    const message_people = message_store
+    const message_people = message_user_ids
         .user_ids()
         .map((user_id) => people_by_user_id_dict.get(user_id))
         .filter(Boolean);
@@ -873,7 +938,7 @@ export function get_people_for_search_bar(query) {
 
     const message_people = get_message_people();
 
-    const small_results = message_people.filter(pred);
+    const small_results = message_people.filter((item) => pred(item));
 
     if (small_results.length >= 5) {
         return small_results;
@@ -903,7 +968,7 @@ export function build_person_matcher(query) {
     query = query.trim();
 
     const termlets = query.toLowerCase().split(/\s+/);
-    const termlet_matchers = termlets.map(build_termlet_matcher);
+    const termlet_matchers = termlets.map((termlet) => build_termlet_matcher(termlet));
 
     return function (user) {
         const email = user.email.toLowerCase();
@@ -1012,9 +1077,9 @@ export function get_people_for_stream_create() {
     /*
         If you are thinking of reusing this function,
         a better option in most cases is to just
-        call `exports.get_realm_users()` and then
-        filter out the "me" user yourself as part of
-        any other filtering that you are doing.
+        call `get_realm_users()` and then filter out
+        the "me" user yourself as part of any other
+        filtering that you are doing.
 
         In particular, this function does a sort
         that is kinda expensive and may not apply
@@ -1024,9 +1089,12 @@ export function get_people_for_stream_create() {
     for (const person of active_user_dict.values()) {
         if (!is_my_user_id(person.user_id)) {
             people_minus_you.push({
-                email: person.email,
+                email: get_visible_email(person),
+                show_email: settings_data.show_email(),
                 user_id: person.user_id,
                 full_name: person.full_name,
+                checked: false,
+                disabled: false,
             });
         }
     }
@@ -1066,11 +1134,18 @@ export function get_mention_syntax(full_name, user_id, silent) {
     if (!user_id) {
         blueslip.warn("get_mention_syntax called without user_id.");
     }
-    if (is_duplicate_full_name(full_name) && user_id) {
+    if (
+        (is_duplicate_full_name(full_name) || full_name_matches_wildcard_mention(full_name)) &&
+        user_id
+    ) {
         mention += "|" + user_id;
     }
     mention += "**";
     return mention;
+}
+
+function full_name_matches_wildcard_mention(full_name) {
+    return ["all", "everyone", "stream"].includes(full_name);
 }
 
 export function _add_user(person) {
@@ -1079,6 +1154,10 @@ export function _add_user(person) {
         users who may be deactivated or outside
         our realm (like cross-realm bots).
     */
+    person.is_moderator = false;
+    if (person.role === settings_config.user_role_values.moderator.code) {
+        person.is_moderator = true;
+    }
     if (person.user_id) {
         people_by_user_id_dict.set(person.user_id, person);
     } else {
@@ -1105,6 +1184,10 @@ export function add_active_user(person) {
 export const is_person_active = (user_id) => {
     if (!people_by_user_id_dict.has(user_id)) {
         blueslip.error("No user found.", user_id);
+    }
+
+    if (cross_realm_dict.has(user_id)) {
+        return true;
     }
 
     return active_user_dict.has(user_id);
@@ -1252,7 +1335,7 @@ export function set_custom_profile_field_data(user_id, field) {
 }
 
 export function is_current_user(email) {
-    if (email === null || email === undefined) {
+    if (email === null || email === undefined || page_params.is_spectator) {
         return false;
     }
 

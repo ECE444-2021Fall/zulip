@@ -1,6 +1,10 @@
-"use strict";
+import $ from "jquery";
 
-exports.build_realm_icon_widget = function (upload_function) {
+import * as channel from "./channel";
+import {page_params} from "./page_params";
+import * as upload_widget from "./upload_widget";
+
+export function build_realm_icon_widget(upload_function) {
     const get_file_input = function () {
         return $("#realm-icon-upload-widget .image_file_input").expectOne();
     };
@@ -26,11 +30,11 @@ exports.build_realm_icon_widget = function (upload_function) {
         $("#realm-icon-upload-widget .image_file_input_error").expectOne(),
         $("#realm-icon-upload-widget .image_upload_button").expectOne(),
         upload_function,
-        page_params.max_icon_file_size,
+        page_params.max_icon_file_size_mib,
     );
-};
+}
 
-exports.rerender = function () {
+export function rerender() {
     $("#realm-icon-upload-widget .image-block").attr("src", page_params.realm_icon_url);
     if (page_params.realm_icon_source === "U") {
         $("#realm-icon-upload-widget .image-delete-button").show();
@@ -41,6 +45,4 @@ exports.rerender = function () {
         const file_input = $("#realm-icon-upload-widget .image_file_input");
         file_input.val("");
     }
-};
-
-window.realm_icon = exports;
+}

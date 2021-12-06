@@ -17,7 +17,7 @@ Comment:
  information or errors found in these notices.
 
 Files: *
-Copyright: 2011-2015 Dropbox, Inc., 2015-2019 Kandra Labs, Inc., and contributors
+Copyright: 2012–2015 Dropbox, Inc., 2015–2021 Kandra Labs, Inc., and contributors
 License: Apache-2.0
 
 Files: confirmation/*
@@ -28,28 +28,10 @@ Files: docs/code-of-conduct.md
 Copyright: 2017, Kandra Labs Inc.
 License: CC-BY-SA-4.0
 
-Files: puppet/zulip/lib/puppet/parser/functions/join.rb puppet/zulip/lib/puppet/parser/functions/range.rb
-Copyright: 2011, Krzysztof Wilczynski
- 2011, Puppet Labs Inc
-License: Apache-2.0
-
-File: puppet/zulip_ops/files/mediawiki/Auth_remoteuser.php
-Copyright: 2006 Otheus Shelling
- 2007 Rusty Burchfield
- 2009 James Kinsman
- 2010 Daniel Thomas
- 2010 Ian Ward Comfort
-License: GPL-2.0
-Comment: Not linked.
-
 Files: puppet/zulip/files/nagios_plugins/zulip_base/check_debian_packages
 Copyright: 2005 Francesc Guasch
 License: GPL-2.0
 Comment: Not linked.
-
-Files: puppet/zulip/files/nagios_plugins/zulip_nagios_server/check_website_response.sh
-Copyright: 2011 Chris Freeman
-License: GPL-2.0
 
 Files: puppet/zulip_ops/files/zulip-ec2-configure-interfaces
 Copyright: 2013-2017, Dropbox, Inc., Kandra Labs, Inc., and contributors
@@ -96,13 +78,6 @@ Copyright: 2012 Twitter, Inc
 License: Apache-2.0
 Comment: Bootstrap tooltip and bootstrap popover.  The software has been modified.
 
-Files: static/third/bootstrap-notify/*
-Copyright: 2013 Nijiko Yonskai
- 2012 Goodybag, Inc.
- 2012 Twitter, Inc
-License: Apache-2.0
-Comment: The software has been modified.
-
 Files: static/generated/emoji/images/emoji/unicode/*
 Copyright: Google, Inc.
 License: Apache-2.0
@@ -133,6 +108,10 @@ License: Expat
 Files: zerver/decorator.py zerver/management/commands/runtornado.py scripts/setup/generate_secrets.py
 Copyright: Django Software Foundation and individual contributors
 License: BSD-3-Clause
+
+Files: static/audio/notification_sounds/*
+Copyright: 2021 Stefan Mertens
+License: CC0-1.0
 
 License: Apache-2.0
  Licensed under the Apache License, Version 2.0 (the "License");

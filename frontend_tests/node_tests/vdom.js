@@ -4,8 +4,9 @@ const {strict: assert} = require("assert");
 
 const {zrequire} = require("../zjsunit/namespace");
 const {run_test} = require("../zjsunit/test");
+const blueslip = require("../zjsunit/zblueslip");
 
-zrequire("vdom");
+const vdom = zrequire("vdom");
 
 run_test("basics", () => {
     const opts = {
@@ -96,8 +97,8 @@ run_test("attribute updates", () => {
 
     vdom.update(replace_content, find, new_ul, ul);
 
-    assert(updated);
-    assert(removed);
+    assert.ok(updated);
+    assert.ok(removed);
 });
 
 function make_child(i, name) {

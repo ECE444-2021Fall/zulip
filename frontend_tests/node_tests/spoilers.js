@@ -2,19 +2,18 @@
 
 const {strict: assert} = require("assert");
 
-const {set_global, zrequire} = require("../zjsunit/namespace");
+const {zrequire} = require("../zjsunit/namespace");
 const {run_test} = require("../zjsunit/test");
-const {make_zjquery} = require("../zjsunit/zjquery");
+const $ = require("../zjsunit/zjquery");
 
-set_global("$", make_zjquery());
-zrequire("spoilers");
+const spoilers = zrequire("spoilers");
 
 // This function is taken from rendered_markdown.js and slightly modified.
 const $array = (array) => {
     const each = (func) => {
-        array.forEach((elem, index) => {
+        for (const [index, elem] of array.entries()) {
             func.call(this, index, elem);
-        });
+        }
     };
     return {each};
 };
@@ -23,6 +22,7 @@ const get_spoiler_elem = (title) => {
     const block = $.create(`block-${title}`);
     const header = $.create(`header-${title}`);
     const content = $.create(`content-${title}`);
+    content.remove = () => {};
     header.text(title);
     block.set_find_results(".spoiler-header", header);
     block.set_find_results(".spoiler-content", content);

@@ -4,6 +4,7 @@ const {strict: assert} = require("assert");
 
 const {zrequire} = require("../zjsunit/namespace");
 const {run_test} = require("../zjsunit/test");
+const blueslip = require("../zjsunit/zblueslip");
 
 const {LazySet} = zrequire("lazy_set");
 
@@ -16,14 +17,15 @@ const {LazySet} = zrequire("lazy_set");
 run_test("map", () => {
     const ls = new LazySet([1, 2]);
 
-    const triple = (n) => n * 3;
-
-    assert.deepEqual(ls.map(triple), [3, 6]);
+    assert.deepEqual(
+        ls.map((n) => n * 3),
+        [3, 6],
+    );
 });
 
 run_test("conversions", () => {
     blueslip.expect("error", "not a number", 2);
     const ls = new LazySet([1, 2]);
     ls.add("3");
-    assert(ls.has("3"));
+    assert.ok(ls.has("3"));
 });

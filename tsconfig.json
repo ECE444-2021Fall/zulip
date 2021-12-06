@@ -14,8 +14,7 @@
 
         /* Basic options */
         "noEmit": true,
-        "target": "ES2019",
-        "module": "ES6",
+        "target": "ES2020",
         "esModuleInterop": true,
         "moduleResolution": "node",
         "resolveJsonModule": true,
@@ -25,6 +24,7 @@
         "strict": true,
         "forceConsistentCasingInFileNames": true,
         "isolatedModules": true,
+        "noImplicitOverride": true,
 
         /* Additional checks */
         "noUnusedLocals": true,

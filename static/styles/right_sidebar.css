@@ -1,6 +1,4 @@
 .right-sidebar {
-    font-size: 14px;
-
     a:hover {
         text-decoration: none;
     }
@@ -34,7 +32,7 @@
             font-size: 1em;
             display: none;
             text-align: center;
-            padding: 0 6px 0 6px;
+            padding: 0 6px;
 
             i {
                 padding-right: 0.25em;
@@ -47,6 +45,17 @@
                 display: inline;
                 cursor: pointer;
                 color: hsl(0, 0%, 0%) !important;
+            }
+
+            /*
+            Hover does not work for touch-based devices like mobile phones.
+            Hence the the icons does not appear, making the user unaware of its
+            presence on such devices. The following media property displays the
+            icon by default for such behaviour.
+            */
+
+            @media (hover: none) {
+                display: inline;
             }
         }
 
@@ -67,10 +76,7 @@
     .user_circle {
         width: 8px;
         height: 8px;
-        margin-top: 0;
-        margin-bottom: 0;
-        margin-left: 5px;
-        margin-right: 5px;
+        margin: 0 5px;
         display: block;
     }
 
@@ -88,8 +94,13 @@
 
 .user-presence-link,
 .user_sidebar_entry .selectable_sidebar_block {
+    display: flex;
     overflow: hidden;
-    text-overflow: ellipsis;
+
+    .user-name {
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
 }
 
 .user_sidebar_entry .selectable_sidebar_block {
@@ -100,6 +111,17 @@
 
 .user-presence-link {
     width: calc(100% - 24px);
+
+    .status_emoji {
+        height: 16px;
+        width: 16px;
+        /* We are setting minimum width here because when the user's name is very long,
+        emoji's width decreases and causes it to break. */
+        min-width: 16px;
+        margin-left: 4px;
+        margin-right: 4px;
+        top: 8px;
+    }
 }
 
 .my_user_status {
@@ -115,24 +137,12 @@
     align-items: flex-start;
     justify-content: space-between;
 
-    .count {
-        float: right;
-        padding: 0 4px;
-        background-color: hsl(105, 2%, 50%);
-        color: hsl(0, 0%, 100%);
-        font-size: 12px;
-        line-height: 14px;
-        height: 15px;
-        font-weight: normal;
-        letter-spacing: 0.6px;
-        position: relative;
-        top: 3px;
-        border-radius: 4px;
-        margin-left: 5px;
+    .unread_count {
         display: none;
+        margin-top: 2.5px;
     }
 
-    &.user-with-count .count {
+    &.user-with-count .unread_count {
         display: block;
     }
 }
@@ -178,15 +188,24 @@
     }
 
     #user_filter_icon {
-        font-size: 13px;
         opacity: 0.5;
         margin-right: 5px;
+
+        &:hover {
+            opacity: 1;
+            cursor: pointer;
+        }
+    }
+
+    /* hovering over the userlist-header creates the same highlight effect as hovering over the user_filter_icon */
+    &:hover > #user_filter_icon {
+        opacity: 1;
+        cursor: pointer;
     }
 }
 
 #keyboard-icon {
-    position: fixed;
-    bottom: 8px; /* bottom padding of .compose-content */
+    position: relative;
     cursor: pointer;
     font-size: 20px;
 }
@@ -195,29 +214,28 @@
     color: inherit;
 }
 
-/* This max-width must be synced with message_viewport.is_narrow */
-@media (max-width: 1165px) {
-    #sidebar-keyboard-shortcuts {
-        /* This is supposed to fix this appearing improperly in narrow
-        windows.  It's likely the wrong solution; a proper fix likely
-        involves replacing `position: fixed` in #keyboard-icon so that
-        it still appears in the right sidebar overlay. */
-        display: none;
-    }
+.right-sidebar-shortcuts {
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    margin-top: 5px;
+}
 
+/* This max-width must be synced with message_viewport.is_narrow */
+@media (width < $xl_min) {
     #userlist-toggle {
         display: block;
     }
 }
 
-@media (max-width: 775px) {
+@media (width < $md_min) {
     #user_search_section .user-list-filter {
         /* input should be 100% - 6px padding x2 - 1px border x2. */
         width: calc(100% - 12px - 2px);
     }
 }
 
-@media (max-width: 500px) {
+@media (width < $sm_min) {
     #userlist-toggle {
         height: 30px;
         line-height: 30px;

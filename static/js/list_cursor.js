@@ -1,6 +1,9 @@
-"use strict";
+import $ from "jquery";
 
-class ListCursor {
+import * as blueslip from "./blueslip";
+import * as scroll_util from "./scroll_util";
+
+export class ListCursor {
     constructor({highlight_class, list}) {
         const config_ok =
             highlight_class &&
@@ -140,5 +143,3 @@ class ListCursor {
         this.go_to(key);
     }
 }
-module.exports = ListCursor;
-window.ListCursor = ListCursor;

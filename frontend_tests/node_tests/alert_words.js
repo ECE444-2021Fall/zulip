@@ -2,15 +2,19 @@
 
 const {strict: assert} = require("assert");
 
-const {zrequire} = require("../zjsunit/namespace");
+const {set_global, zrequire} = require("../zjsunit/namespace");
 const {run_test} = require("../zjsunit/test");
+
+set_global("page_params", {
+    is_spectator: false,
+});
 
 const params = {
     alert_words: ["alertone", "alerttwo", "alertthree", "al*rt.*s", ".+", "emoji"],
 };
 
 const people = zrequire("people");
-zrequire("alert_words");
+const alert_words = zrequire("alert_words");
 
 alert_words.initialize(params);
 
@@ -48,7 +52,7 @@ const alertwordboundary_message = {
 };
 const multialert_message = {
     sender_email: "another@zulip.com",
-    content: "<p>another alertthreemessage alertone and then alerttwo</p>",
+    content: "<p>another emoji alertone and then alerttwo</p>",
     alerted: true,
 };
 const unsafe_word_message = {
@@ -67,6 +71,12 @@ const question_word_message = {
     alerted: true,
 };
 
+const typo_word_message = {
+    sender_email: "another@zulip.com",
+    content: "<p>alertones alerttwo alerttwo alertthreez</p>",
+    alerted: true,
+};
+
 const alert_domain_message = {
     sender_email: "another@zulip.com",
     content:
@@ -82,18 +92,20 @@ const message_with_emoji = {
 };
 
 run_test("notifications", () => {
-    assert(!alert_words.notifies(regular_message));
-    assert(!alert_words.notifies(own_message));
-    assert(alert_words.notifies(other_message));
-    assert(alert_words.notifies(caps_message));
-    assert(!alert_words.notifies(alertwordboundary_message));
-    assert(alert_words.notifies(multialert_message));
-    assert(alert_words.notifies(unsafe_word_message));
-    assert(alert_words.notifies(alert_domain_message));
-    assert(alert_words.notifies(message_with_emoji));
+    assert.ok(!alert_words.notifies(regular_message));
+    assert.ok(!alert_words.notifies(own_message));
+    assert.ok(alert_words.notifies(other_message));
+    assert.ok(alert_words.notifies(caps_message));
+    assert.ok(!alert_words.notifies(alertwordboundary_message));
+    assert.ok(alert_words.notifies(multialert_message));
+    assert.ok(alert_words.notifies(unsafe_word_message));
+    assert.ok(alert_words.notifies(alert_domain_message));
+    assert.ok(alert_words.notifies(message_with_emoji));
 });
 
 run_test("munging", () => {
+    alert_words.initialize(params);
+
     let saved_content = regular_message.content;
     alert_words.process_message(regular_message);
     assert.equal(saved_content, regular_message.content);
@@ -102,56 +114,61 @@ run_test("munging", () => {
     alert_words.process_message(alertwordboundary_message);
     assert.equal(alertwordboundary_message.content, saved_content);
 
-    alert_words.process_message(other_message);
-    assert.equal(
-        other_message.content,
+    function assert_transform(message, expected_new_content) {
+        const msg = {...message};
+        alert_words.process_message(msg);
+        assert.equal(msg.content, expected_new_content);
+    }
+
+    assert_transform(
+        other_message,
         "<p>another <span class='alert-word'>alertone</span> message</p>",
     );
-    alert_words.process_message(caps_message);
-    assert.equal(
-        caps_message.content,
+
+    assert_transform(
+        caps_message,
         "<p>another <span class='alert-word'>ALERTtwo</span> message</p>",
     );
 
-    alert_words.process_message(multialert_message);
-    assert.equal(
-        multialert_message.content,
-        "<p>another alertthreemessage <span class='alert-word'>alertone</span> and then <span class='alert-word'>alerttwo</span></p>",
+    assert_transform(
+        multialert_message,
+        "<p>another <span class='alert-word'>emoji</span> <span class='alert-word'>alertone</span> and then <span class='alert-word'>alerttwo</span></p>",
     );
 
-    alert_words.process_message(unsafe_word_message);
-    assert.equal(
-        unsafe_word_message.content,
+    assert_transform(
+        unsafe_word_message,
         "<p>gotta <span class='alert-word'>al*rt.*s</span> all</p>",
     );
 
-    alert_words.process_message(alert_in_url_message);
-    assert.equal(alert_in_url_message.content, "<p>http://www.google.com/alertone/me</p>");
+    assert_transform(alert_in_url_message, "<p>http://www.google.com/alertone/me</p>");
 
-    alert_words.process_message(question_word_message);
-    assert.equal(
-        question_word_message.content,
+    assert_transform(
+        question_word_message,
         "<p>still <span class='alert-word'>alertone</span>? me</p>",
     );
 
-    alert_words.process_message(alert_domain_message);
-    assert.equal(
-        alert_domain_message.content,
+    assert_transform(
+        typo_word_message,
+        "<p>alertones <span class='alert-word'>alerttwo</span> <span class='alert-word'>alerttwo</span> alertthreez</p>",
+    );
+
+    assert_transform(
+        alert_domain_message,
         '<p>now with link <a href="http://www.alerttwo.us/foo/bar" target="_blank" title="http://www.alerttwo.us/foo/bar">www.<span class=\'alert-word\'>alerttwo</span>.us/foo/bar</a></p>',
     );
 
-    alert_words.process_message(message_with_emoji);
-    assert.equal(
-        message_with_emoji.content,
+    assert_transform(
+        message_with_emoji,
         '<p>I <img alt=":heart:" class="emoji" src="/static/generated/emoji/images/emoji/unicode/2764.png" title="heart"> <span class=\'alert-word\'>emoji</span>!</p>',
     );
 });
 
 run_test("basic get/set operations", () => {
-    assert(!alert_words.has_alert_word("breakfast"));
-    assert(!alert_words.has_alert_word("lunch"));
+    alert_words.initialize({alert_words: []});
+    assert.ok(!alert_words.has_alert_word("breakfast"));
+    assert.ok(!alert_words.has_alert_word("lunch"));
     alert_words.set_words(["breakfast", "lunch"]);
-    assert(alert_words.has_alert_word("breakfast"));
-    assert(alert_words.has_alert_word("lunch"));
-    assert(!alert_words.has_alert_word("dinner"));
+    assert.ok(alert_words.has_alert_word("breakfast"));
+    assert.ok(alert_words.has_alert_word("lunch"));
+    assert.ok(!alert_words.has_alert_word("dinner"));
 });

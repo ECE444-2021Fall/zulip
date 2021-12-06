@@ -5,11 +5,11 @@ const {strict: assert} = require("assert");
 const {zrequire} = require("../zjsunit/namespace");
 const {run_test} = require("../zjsunit/test");
 
-const emoji_codes = zrequire("emoji_codes", "generated/emoji/emoji_codes.json");
+const emoji_codes = zrequire("../generated/emoji/emoji_codes.json");
 
 const events = require("./lib/events");
 
-const emoji = zrequire("emoji", "shared/js/emoji");
+const emoji = zrequire("../shared/js/emoji");
 
 const realm_emoji = events.test_realm_emojis;
 
@@ -45,5 +45,81 @@ run_test("get_emoji_* API", () => {
     assert.equal(emoji.get_emoji_codepoint("holiday_tree"), "1f384");
     assert.equal(emoji.get_emoji_codepoint("bogus"), undefined);
 
-    assert.equal(emoji.get_realm_emoji_url("spain"), "/some/path/to/spain.png");
+    assert.equal(emoji.get_realm_emoji_url("spain"), "/some/path/to/spain.gif");
+});
+
+run_test("get_emoji_details_by_name", () => {
+    let emoji_name = "smile";
+
+    let result = emoji.get_emoji_details_by_name(emoji_name);
+    assert.deepEqual(result, {
+        emoji_name: "smile",
+        emoji_code: "1f642",
+        reaction_type: "unicode_emoji",
+    });
+
+    // Test adding an unicode_emoji.
+    emoji_name = "smile";
+
+    result = emoji.get_emoji_details_by_name(emoji_name);
+    assert.deepEqual(result, {
+        emoji_name: "smile",
+        reaction_type: "unicode_emoji",
+        emoji_code: "1f642",
+    });
+
+    // Test adding zulip emoji.
+    emoji_name = "zulip";
+
+    result = emoji.get_emoji_details_by_name(emoji_name);
+    assert.deepEqual(result, {
+        emoji_name: "zulip",
+        reaction_type: "zulip_extra_emoji",
+        emoji_code: "zulip",
+        url: "/static/generated/emoji/images/emoji/unicode/zulip.png",
+    });
+
+    // Test adding realm emoji.
+    emoji_name = "spain";
+
+    emoji_name = emoji.get_emoji_details_by_name(emoji_name);
+    assert.deepEqual(emoji_name, {
+        emoji_name: "spain",
+        reaction_type: "realm_emoji",
+        emoji_code: "101",
+        url: "/some/path/to/spain.gif",
+        still_url: "/some/path/to/spain.png",
+    });
+
+    emoji_name = "green_tick";
+    emoji_name = emoji.get_emoji_details_by_name(emoji_name);
+    assert.deepEqual(emoji_name, {
+        emoji_name: "green_tick",
+        reaction_type: "realm_emoji",
+        emoji_code: "102",
+        url: "/some/path/to/emoji",
+    });
+
+    // Test sending without emoji name.
+    assert.throws(
+        () => {
+            emoji.get_emoji_details_by_name();
+        },
+        {
+            name: "Error",
+            message: "Emoji name must be passed.",
+        },
+    );
+
+    // Test sending an unknown emoji.
+    emoji_name = "unknown-emoji";
+    assert.throws(
+        () => {
+            emoji.get_emoji_details_by_name(emoji_name);
+        },
+        {
+            name: "Error",
+            message: "Bad emoji name: unknown-emoji",
+        },
+    );
 });

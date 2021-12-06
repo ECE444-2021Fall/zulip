@@ -10,10 +10,17 @@
 * [Remove an emoji reaction](/api/remove-reaction)
 * [Render a message](/api/render-message)
 * [Get a message's raw Markdown](/api/get-raw-message)
-* [Check messages match narrow](/api/check-narrow-matches)
+* [Check if messages match narrow](/api/check-messages-match-narrow)
 * [Get a message's edit history](/api/get-message-history)
 * [Update personal message flags](/api/update-message-flags)
 * [Mark messages as read in bulk](/api/mark-all-as-read)
+
+#### Drafts
+
+* [Get drafts](/api/get-drafts)
+* [Create drafts](/api/create-drafts)
+* [Edit a draft](/api/edit-draft)
+* [Delete a draft](/api/delete-draft)
 
 #### Streams
 
@@ -21,45 +28,57 @@
 * [Subscribe to a stream](/api/subscribe)
 * [Unsubscribe from a stream](/api/unsubscribe)
 * [Get subscription status](/api/get-subscription-status)
+* [Get all subscribers](/api/get-subscribers)
 * [Update subscription settings](/api/update-subscription-settings)
 * [Get all streams](/api/get-streams)
 * [Get stream ID](/api/get-stream-id)
 * [Create a stream](/api/create-stream)
 * [Update a stream](/api/update-stream)
-* [Delete a stream](/api/delete-stream)
+* [Archive a stream](/api/archive-stream)
 * [Get topics in a stream](/api/get-stream-topics)
 * [Topic muting](/api/mute-topic)
+* [Delete a topic](/api/delete-topic)
 
 #### Users
 
 * [Get all users](/api/get-users)
 * [Get own user](/api/get-own-user)
 * [Get a user](/api/get-user)
+* [Get a user by email](/api/get-user-by-email)
 * [Update a user](/api/update-user)
+* [Update your status](/api/update-status)
 * [Create a user](/api/create-user)
 * [Deactivate a user](/api/deactivate-user)
 * [Reactivate a user](/api/reactivate-user)
+* [Deactivate own user](/api/deactivate-own-user)
 * [Set "typing" status](/api/set-typing-status)
 * [Get user presence](/api/get-user-presence)
 * [Get attachments](/api/get-attachments)
-* [Update notification settings](/api/update-notification-settings)
+* [Delete an attachment](/api/remove-attachment)
+* [Update settings](/api/update-settings)
 * [Get user groups](/api/get-user-groups)
 * [Create a user group](/api/create-user-group)
 * [Update a user group](/api/update-user-group)
 * [Delete a user group](/api/remove-user-group)
 * [Update user group members](/api/update-user-group-members)
+* [Mute a user](/api/mute-user)
+* [Unmute a user](/api/unmute-user)
 
 #### Server & organizations
 
 * [Get server settings](/api/get-server-settings)
 * [Get linkifiers](/api/get-linkifiers)
 * [Add a linkifier](/api/add-linkifier)
+* [Update a linkifier](/api/update-linkifier)
 * [Remove a linkifier](/api/remove-linkifier)
+* [Add a code playground](/api/add-code-playground)
+* [Remove a code playground](/api/remove-code-playground)
 * [Get all custom emoji](/api/get-custom-emoji)
 * [Upload custom emoji](/api/upload-custom-emoji)
 * [Get all custom profile fields](/api/get-custom-profile-fields)
 * [Reorder custom profile fields](/api/reorder-custom-profile-fields)
 * [Create a custom profile field](/api/create-custom-profile-field)
+* [Update realm-level defaults of user settings](/api/update-realm-user-settings-defaults)
 
 #### Real-time events
 

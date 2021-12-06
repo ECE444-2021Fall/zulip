@@ -1,4 +1,6 @@
-"use strict";
+import $ from "jquery";
+
+import * as common from "../common";
 
 $(() => {
     $("a.envelope-link").on("click", function () {

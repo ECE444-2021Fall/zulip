@@ -1,8 +1,9 @@
 # Edit or delete a message
 
 !!! warn ""
+
     **Note:** Editing message topic is discussed in a
-    [separate guide](/help/change-the-topic-of-a-message).
+    [separate guide](/help/rename-a-topic).
 
 By default, Zulip allows you to edit the content of your messages within 10
 minutes of when you send them. Organization administrators can
@@ -25,6 +26,7 @@ content.
 {end_tabs}
 
 !!! warn ""
+
     **Note:** After you have edited a message, the message is publicly marked as
     `(EDITED)`. You can [view](/help/view-a-messages-edit-history) a message's
     edit history, assuming that feature has not been
@@ -34,7 +36,7 @@ If you don't see the pencil (<i class="fa fa-pencil"></i>) icon, the message con
 can no longer be edited. You should see a file (<i class="fa fa-file-code-o"></i>)
 icon instead. Clicking the file icon will allow you to view the
 [Markdown source](/help/view-the-markdown-source-of-a-message) of the message, or
-[edit the topic](/help/change-the-topic-of-a-message).
+[edit the topic](/help/rename-a-topic).
 
 ## Delete a message
 
@@ -61,6 +63,8 @@ administrator.
 
 1. Select **Delete message**.
 
+1. Approve by clicking **Confirm**.
+
 {end_tabs}
 
 If you don't see the **Delete message** option, it means you don't have
@@ -83,7 +87,7 @@ permissions to delete that message.
   you also delete the message.
 * For protection against accidental or immediately regretted
   deletions, messages deleted directly or via a [message retention
-  policy](/help/message-retention-policy) are archived for 7 days in a
+  policy](/help/message-retention-policy) are archived for 30 days in a
   format that can be restored by a server administrator.  After that
   time, they are permanently and irrecoverably deleted from the Zulip
   server.  Server administrators can adjust the archival time using
@@ -92,6 +96,6 @@ permissions to delete that message.
 ## Related articles
 
 * [Delete a topic](/help/delete-a-topic)
-* [Delete a stream](/help/delete-a-stream)
+* [Archive a stream](/help/archive-a-stream)
 * [Message retention policy](/help/message-retention-policy)
 * [Configure editing and deletion policies](/help/configure-message-editing-and-deletion)

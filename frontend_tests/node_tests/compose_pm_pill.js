@@ -2,23 +2,23 @@
 
 const {strict: assert} = require("assert");
 
-const {set_global, zrequire} = require("../zjsunit/namespace");
+const {mock_esm, zrequire} = require("../zjsunit/namespace");
 const {run_test} = require("../zjsunit/test");
-const {make_zjquery} = require("../zjsunit/zjquery");
+const $ = require("../zjsunit/zjquery");
 
-set_global("$", make_zjquery());
-
+const compose_actions = mock_esm("../../static/js/compose_actions");
 const people = zrequire("people");
 
-zrequire("compose_pm_pill");
-zrequire("input_pill");
-zrequire("user_pill");
+const compose_pm_pill = zrequire("compose_pm_pill");
+const input_pill = zrequire("input_pill");
 
 let pills = {
     pill: {},
 };
 
-run_test("pills", () => {
+run_test("pills", ({override}) => {
+    override(compose_actions, "update_placeholder_text", () => {});
+
     const othello = {
         user_id: 1,
         email: "othello@example.com",
@@ -37,33 +37,33 @@ run_test("pills", () => {
         full_name: "Hamlet",
     };
 
-    people.get_realm_users = function () {
-        return [iago, othello, hamlet];
-    };
+    people.add_active_user(othello);
+    people.add_active_user(iago);
+    people.add_active_user(hamlet);
+
+    people.get_realm_users = () => [iago, othello, hamlet];
 
     const recipient_stub = $("#private_message_recipient");
-    const pill_container_stub = $('.pill-container[data-before="You and"]');
+    const pill_container_stub = "pill-container";
     recipient_stub.set_parent(pill_container_stub);
     let create_item_handler;
 
     const all_pills = new Map();
 
-    pills.appendValidatedData = function (item) {
+    pills.appendValidatedData = (item) => {
         const id = item.user_id;
-        assert(!all_pills.has(id));
+        assert.ok(!all_pills.has(id));
         all_pills.set(id, item);
     };
-    pills.items = function () {
-        return Array.from(all_pills.values());
-    };
+    pills.items = () => Array.from(all_pills.values());
 
     let text_cleared;
-    pills.clear_text = function () {
+    pills.clear_text = () => {
         text_cleared = true;
     };
 
     let pills_cleared;
-    pills.clear = function () {
+    pills.clear = () => {
         pills_cleared = true;
         pills = {
             pill: {},
@@ -79,7 +79,7 @@ run_test("pills", () => {
     };
 
     let get_by_email_called = false;
-    people.get_by_email = function (user_email) {
+    people.get_by_email = (user_email) => {
         get_by_email_called = true;
         if (user_email === iago.email) {
             return iago;
@@ -91,7 +91,7 @@ run_test("pills", () => {
     };
 
     let get_by_user_id_called = false;
-    people.get_by_user_id = function (id) {
+    people.get_by_user_id = (id) => {
         get_by_user_id_called = true;
         if (id === othello.user_id) {
             return othello;
@@ -105,35 +105,54 @@ run_test("pills", () => {
     function test_create_item(handler) {
         (function test_rejection_path() {
             const item = handler(othello.email, pills.items());
-            assert(get_by_email_called);
+            assert.ok(get_by_email_called);
             assert.equal(item, undefined);
         })();
 
         (function test_success_path() {
             get_by_email_called = false;
             const res = handler(iago.email, pills.items());
-            assert(get_by_email_called);
+            assert.ok(get_by_email_called);
             assert.equal(typeof res, "object");
             assert.equal(res.user_id, iago.user_id);
             assert.equal(res.display_value, iago.full_name);
+        })();
+
+        (function test_deactivated_pill() {
+            people.deactivate(iago);
+            get_by_email_called = false;
+            const res = handler(iago.email, pills.items());
+            assert.ok(get_by_email_called);
+            assert.equal(typeof res, "object");
+            assert.equal(res.user_id, iago.user_id);
+            assert.equal(res.display_value, iago.full_name + " (deactivated)");
+            assert.ok(res.deactivated);
+            people.add_active_user(iago);
         })();
     }
 
     function input_pill_stub(opts) {
         assert.equal(opts.container, pill_container_stub);
         create_item_handler = opts.create_item_from_text;
-        assert(create_item_handler);
+        assert.ok(create_item_handler);
         return pills;
     }
 
-    input_pill.create = input_pill_stub;
+    input_pill.__Rewire__("create", input_pill_stub);
 
     // We stub the return value of input_pill.create(), manually add widget functions to it.
-    pills.onPillCreate = () => {};
-    pills.onPillRemove = () => {};
+    pills.onPillCreate = (callback) => {
+        // Exercise our callback for line coverage. It is
+        // just compose_actions.update_placeholder_text(),
+        // which we override.
+        callback();
+    };
+    pills.onPillRemove = (callback) => {
+        callback();
+    };
 
     compose_pm_pill.initialize();
-    assert(compose_pm_pill.widget);
+    assert.ok(compose_pm_pill.widget);
 
     compose_pm_pill.set_from_typeahead(othello);
     compose_pm_pill.set_from_typeahead(hamlet);
@@ -149,41 +168,43 @@ run_test("pills", () => {
 
     const persons = [othello, iago, hamlet];
     const items = compose_pm_pill.filter_taken_users(persons);
-    assert.deepEqual(items, [{email: "iago@zulip.com", user_id: 2, full_name: "Iago"}]);
+    assert.deepEqual(items, [
+        {email: "iago@zulip.com", user_id: 2, full_name: "Iago", is_moderator: false},
+    ]);
 
     test_create_item(create_item_handler);
 
     compose_pm_pill.set_from_emails("othello@example.com");
-    assert(compose_pm_pill.widget);
+    assert.ok(compose_pm_pill.widget);
 
-    assert(get_by_user_id_called);
-    assert(pills_cleared);
-    assert(appendValue_called);
-    assert(text_cleared);
+    assert.ok(get_by_user_id_called);
+    assert.ok(pills_cleared);
+    assert.ok(appendValue_called);
+    assert.ok(text_cleared);
 });
 
 run_test("has_unconverted_data", () => {
-    compose_pm_pill.widget = {
+    compose_pm_pill.__Rewire__("widget", {
         is_pending: () => true,
-    };
+    });
 
     // If the pill itself has pending data, we have unconverted
     // data.
     assert.equal(compose_pm_pill.has_unconverted_data(), true);
 
-    compose_pm_pill.widget = {
+    compose_pm_pill.__Rewire__("widget", {
         is_pending: () => false,
         items: () => [{user_id: 99}],
-    };
+    });
 
     // Our pill is complete and all items contain user_id, so
     // we do NOT have unconverted data.
     assert.equal(compose_pm_pill.has_unconverted_data(), false);
 
-    compose_pm_pill.widget = {
+    compose_pm_pill.__Rewire__("widget", {
         is_pending: () => false,
         items: () => [{user_id: 99}, {email: "random@mit.edu"}],
-    };
+    });
 
     // One of our items only knows email (as in a bridge-with-zephyr
     // scenario where we might not have registered the user yet), so

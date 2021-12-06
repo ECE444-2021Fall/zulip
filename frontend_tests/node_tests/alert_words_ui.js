@@ -2,23 +2,21 @@
 
 const {strict: assert} = require("assert");
 
-const {stub_templates} = require("../zjsunit/handlebars");
-const {set_global, zrequire} = require("../zjsunit/namespace");
+const {$t} = require("../zjsunit/i18n");
+const {mock_esm, zrequire} = require("../zjsunit/namespace");
 const {run_test} = require("../zjsunit/test");
-const {make_zjquery} = require("../zjsunit/zjquery");
+const $ = require("../zjsunit/zjquery");
 
-set_global("$", make_zjquery());
+const channel = mock_esm("../../static/js/channel");
 
-set_global("channel", {});
-
-zrequire("alert_words");
-zrequire("alert_words_ui");
+const alert_words = zrequire("alert_words");
+const alert_words_ui = zrequire("alert_words_ui");
 
 alert_words.initialize({
     alert_words: ["foo", "bar"],
 });
 
-run_test("render_alert_words_ui", () => {
+run_test("render_alert_words_ui", ({mock_template}) => {
     const word_list = $("#alert_words_list");
     const appended = [];
     word_list.append = (rendered) => {
@@ -28,22 +26,21 @@ run_test("render_alert_words_ui", () => {
     const alert_word_items = $.create("alert_word_items");
     word_list.set_find_results(".alert-word-item", alert_word_items);
 
-    stub_templates((name, args) => {
-        assert.equal(name, "settings/alert_word_settings_item");
-        return "stub-" + args.word;
-    });
+    alert_word_items.remove = () => {};
+
+    mock_template("settings/alert_word_settings_item.hbs", false, (args) => "stub-" + args.word);
 
     const new_alert_word = $("#create_alert_word_name");
-    assert(!new_alert_word.is_focused());
+    assert.ok(!new_alert_word.is_focused());
 
     alert_words_ui.render_alert_words_ui();
 
     assert.deepEqual(appended, ["stub-bar", "stub-foo"]);
-    assert(new_alert_word.is_focused());
+    assert.ok(new_alert_word.is_focused());
 });
 
-run_test("add_alert_word", () => {
-    alert_words_ui.render_alert_words_ui = () => {}; // we've already tested this above
+run_test("add_alert_word", ({override}) => {
+    override(alert_words_ui, "render_alert_words_ui", () => {}); // we've already tested this above
 
     alert_words_ui.set_up_alert_words();
 
@@ -58,17 +55,17 @@ run_test("add_alert_word", () => {
     // add '' as alert word
     add_func();
     assert.equal(new_alert_word.val(), "");
-    assert(alert_word_status.hasClass("alert-danger"));
+    assert.ok(alert_word_status.hasClass("alert-danger"));
     assert.equal(alert_word_status_text.text(), "translated: Alert word can't be empty!");
-    assert(alert_word_status.visible());
+    assert.ok(alert_word_status.visible());
 
     // add 'foo' as alert word (existing word)
     new_alert_word.val("foo");
 
     add_func();
-    assert(alert_word_status.hasClass("alert-danger"));
+    assert.ok(alert_word_status.hasClass("alert-danger"));
     assert.equal(alert_word_status_text.text(), "translated: Alert word already exists!");
-    assert(alert_word_status.visible());
+    assert.ok(alert_word_status.visible());
 
     // add 'zot' as alert word (new word)
     new_alert_word.val("zot");
@@ -86,18 +83,21 @@ run_test("add_alert_word", () => {
 
     // test failure
     fail_func();
-    assert(alert_word_status.hasClass("alert-danger"));
+    assert.ok(alert_word_status.hasClass("alert-danger"));
     assert.equal(alert_word_status_text.text(), "translated: Error adding alert word!");
-    assert(alert_word_status.visible());
+    assert.ok(alert_word_status.visible());
 
     // test success
     success_func();
-    assert(alert_word_status.hasClass("alert-success"));
+    assert.ok(alert_word_status.hasClass("alert-success"));
     assert.equal(alert_word_status_text.text(), 'translated: Alert word "zot" added successfully!');
-    assert(alert_word_status.visible());
+    assert.ok(alert_word_status.visible());
 });
 
-run_test("add_alert_word_keypress", () => {
+run_test("add_alert_word_keypress", ({override}) => {
+    override(alert_words_ui, "render_alert_words_ui", () => {});
+    alert_words_ui.set_up_alert_words();
+
     const create_form = $("#create_alert_word_form");
     const keypress_func = create_form.get_on_handler("keypress", "#create_alert_word_name");
 
@@ -106,7 +106,7 @@ run_test("add_alert_word_keypress", () => {
 
     const event = {
         preventDefault: () => {},
-        which: 13,
+        key: "Enter",
         target: "#create_alert_word_name",
     };
 
@@ -117,19 +117,22 @@ run_test("add_alert_word_keypress", () => {
     };
 
     keypress_func(event);
-    assert(called);
+    assert.ok(called);
 });
 
-run_test("remove_alert_word", () => {
+run_test("remove_alert_word", ({override}) => {
+    override(alert_words_ui, "render_alert_words_ui", () => {});
+    alert_words_ui.set_up_alert_words();
+
     const word_list = $("#alert_words_list");
     const remove_func = word_list.get_on_handler("click", ".remove-alert-word");
 
     const remove_alert_word = $(".remove-alert-word");
-    const list_item = $("li.alert-word-item");
+    const list_item = $("tr.alert-word-item");
     const val_item = $("span.value");
-    val_item.text(i18n.t("zot"));
+    val_item.text($t({defaultMessage: "zot"}));
 
-    remove_alert_word.set_parents_result("li", list_item);
+    remove_alert_word.set_parents_result("tr", list_item);
     list_item.set_find_results(".value", val_item);
 
     const event = {
@@ -153,18 +156,21 @@ run_test("remove_alert_word", () => {
 
     // test failure
     fail_func();
-    assert(alert_word_status.hasClass("alert-danger"));
+    assert.ok(alert_word_status.hasClass("alert-danger"));
     assert.equal(alert_word_status_text.text(), "translated: Error removing alert word!");
-    assert(alert_word_status.visible());
+    assert.ok(alert_word_status.visible());
 
     // test success
     success_func();
-    assert(alert_word_status.hasClass("alert-success"));
+    assert.ok(alert_word_status.hasClass("alert-success"));
     assert.equal(alert_word_status_text.text(), "translated: Alert word removed successfully!");
-    assert(alert_word_status.visible());
+    assert.ok(alert_word_status.visible());
 });
 
-run_test("close_status_message", () => {
+run_test("close_status_message", ({override}) => {
+    override(alert_words_ui, "render_alert_words_ui", () => {});
+    alert_words_ui.set_up_alert_words();
+
     const alert_word_settings = $("#alert-word-settings");
     const close = alert_word_settings.get_on_handler("click", ".close-alert-word-status");
 
@@ -179,7 +185,7 @@ run_test("close_status_message", () => {
         currentTarget: ".close-alert-word-status",
     };
 
-    assert(alert.visible());
+    assert.ok(alert.visible());
     close(event);
-    assert(!alert.visible());
+    assert.ok(!alert.visible());
 });

@@ -7,92 +7,77 @@ const {JSDOM} = require("jsdom");
 
 const {set_global, zrequire} = require("../zjsunit/namespace");
 const {run_test} = require("../zjsunit/test");
-const {make_zjquery} = require("../zjsunit/zjquery");
+const $ = require("../zjsunit/zjquery");
+const {page_params} = require("../zjsunit/zpage_params");
 
 const noop = () => {};
 const template = fs.readFileSync("templates/corporate/upgrade.html", "utf-8");
 const dom = new JSDOM(template, {pretendToBeVisual: true});
 const document = dom.window.document;
+const location = set_global("location", {});
 
-set_global("helpers", {
-    set_tab: noop,
-});
+const helpers = zrequire("../js/billing/helpers");
+zrequire("../js/billing/upgrade");
 
-set_global("StripeCheckout", {
-    configure: noop,
-});
+run_test("initialize", ({override}) => {
+    page_params.annual_price = 8000;
+    page_params.monthly_price = 800;
+    page_params.seat_count = 8;
+    page_params.percent_off = 20;
 
-set_global("page_params", {
-    annual_price: 8000,
-    monthly_price: 800,
-    seat_count: 8,
-    percent_off: 20,
-});
-
-zrequire("helpers", "js/billing/helpers");
-set_global("$", make_zjquery());
-
-run_test("initialize", () => {
-    let token_func;
-    helpers.set_tab = (page_name) => {
+    override(helpers, "set_tab", (page_name) => {
         assert.equal(page_name, "upgrade");
-    };
+    });
 
     let create_ajax_request_form_call_count = 0;
-    helpers.create_ajax_request = (url, form_name, stripe_token, numeric_inputs, redirect_to) => {
-        create_ajax_request_form_call_count += 1;
-        if (form_name === "autopay") {
-            assert.equal(url, "/json/billing/upgrade");
-            assert.equal(stripe_token, "stripe_add_card_token");
-            assert.deepEqual(numeric_inputs, ["licenses"]);
-            assert.equal(redirect_to, undefined);
-        } else if (form_name === "invoice") {
-            assert.equal(url, "/json/billing/upgrade");
-            assert.equal(stripe_token, undefined);
-            assert.deepEqual(numeric_inputs, ["licenses"]);
-            assert.equal(redirect_to, undefined);
-        } else if (form_name === "sponsorship") {
-            assert.equal(url, "/json/billing/sponsorship");
-            assert.equal(stripe_token, undefined);
-            assert.equal(numeric_inputs, undefined);
-            assert.equal(redirect_to, "/");
-        } else {
-            throw new Error("Unhandled case");
-        }
-    };
+    helpers.__Rewire__(
+        "create_ajax_request",
+        (url, form_name, ignored_inputs, type, success_callback) => {
+            create_ajax_request_form_call_count += 1;
+            switch (form_name) {
+                case "autopay":
+                    assert.equal(url, "/json/billing/upgrade");
+                    assert.deepEqual(ignored_inputs, []);
+                    assert.equal(type, "POST");
+                    location.replace = (new_location) => {
+                        assert.equal(new_location, "https://stripe_session_url");
+                    };
+                    // mock redirectToCheckout and verify its called
+                    success_callback({stripe_session_url: "https://stripe_session_url"});
+                    break;
+                case "invoice":
+                    assert.equal(url, "/json/billing/upgrade");
+                    assert.deepEqual(ignored_inputs, []);
+                    assert.equal(type, "POST");
+                    location.replace = (new_location) => {
+                        assert.equal(new_location, "/billing");
+                    };
+                    success_callback();
+                    break;
+                case "sponsorship":
+                    assert.equal(url, "/json/billing/sponsorship");
+                    assert.deepEqual(ignored_inputs, []);
+                    assert.equal(type, "POST");
+                    location.replace = (new_location) => {
+                        assert.equal(new_location, "/");
+                    };
+                    success_callback();
+                    break;
+                default:
+                    throw new Error("Unhandled case");
+            }
+        },
+    );
 
-    const open_func = (config_opts) => {
-        assert.equal(config_opts.name, "Zulip");
-        assert.equal(config_opts.zipCode, true);
-        assert.equal(config_opts.billingAddress, true);
-        assert.equal(config_opts.panelLabel, "Make payment");
-        assert.equal(config_opts.label, "Add card");
-        assert.equal(config_opts.allowRememberMe, false);
-        assert.equal(config_opts.email, "{{ email }}");
-        assert.equal(config_opts.description, "Zulip Cloud Standard");
-        token_func("stripe_add_card_token");
-    };
-
-    StripeCheckout.configure = (config_opts) => {
-        assert.equal(config_opts.image, "/static/images/logo/zulip-icon-128x128.png");
-        assert.equal(config_opts.locale, "auto");
-        assert.equal(config_opts.key, "{{ publishable_key }}");
-        token_func = config_opts.token;
-
-        return {
-            open: open_func,
-        };
-    };
-
-    helpers.show_license_section = (section) => {
+    override(helpers, "show_license_section", (section) => {
         assert.equal(section, "automatic");
-    };
+    });
 
-    helpers.update_charged_amount = (prices, schedule) => {
+    override(helpers, "update_charged_amount", (prices, schedule) => {
         assert.equal(prices.annual, 6400);
         assert.equal(prices.monthly, 640);
         assert.equal(schedule, "monthly");
-    };
+    });
 
     $("input[type=radio][name=license_management]:checked").val = () =>
         document.querySelector("input[type=radio][name=license_management]:checked").value;
@@ -103,7 +88,8 @@ run_test("initialize", () => {
     $("#autopay-form").data = (key) =>
         document.querySelector("#autopay-form").getAttribute("data-" + key);
 
-    zrequire("upgrade", "js/billing/upgrade");
+    const initialize_function = $.get_initialize_function();
+    initialize_function();
 
     const e = {
         preventDefault: noop,
@@ -113,7 +99,7 @@ run_test("initialize", () => {
     const invoice_click_handler = $("#invoice-button").get_on_handler("click");
     const request_sponsorship_click_handler = $("#sponsorship-button").get_on_handler("click");
 
-    helpers.is_valid_input = () => true;
+    override(helpers, "is_valid_input", () => true);
     add_card_click_handler(e);
     assert.equal(create_ajax_request_form_call_count, 1);
     invoice_click_handler(e);
@@ -121,25 +107,25 @@ run_test("initialize", () => {
     request_sponsorship_click_handler(e);
     assert.equal(create_ajax_request_form_call_count, 3);
 
-    helpers.is_valid_input = () => false;
+    override(helpers, "is_valid_input", () => false);
     add_card_click_handler(e);
     invoice_click_handler(e);
     request_sponsorship_click_handler(e);
     assert.equal(create_ajax_request_form_call_count, 3);
 
-    helpers.show_license_section = (section) => {
+    override(helpers, "show_license_section", (section) => {
         assert.equal(section, "manual");
-    };
+    });
     const license_change_handler = $("input[type=radio][name=license_management]").get_on_handler(
         "change",
     );
     license_change_handler.call({value: "manual"});
 
-    helpers.update_charged_amount = (prices, schedule) => {
+    override(helpers, "update_charged_amount", (prices, schedule) => {
         assert.equal(prices.annual, 6400);
         assert.equal(prices.monthly, 640);
         assert.equal(schedule, "monthly");
-    };
+    });
     const schedule_change_handler = $("input[type=radio][name=schedule]").get_on_handler("change");
     schedule_change_handler.call({value: "monthly"});
 
@@ -149,44 +135,39 @@ run_test("initialize", () => {
     assert.equal($("#invoice_annual_price").text(), "64");
     assert.equal($("#invoice_annual_price_per_month").text(), "5.34");
 
-    const organization_type_change_handler = $("select[name=organization-type]").get_on_handler(
-        "change",
-    );
-    organization_type_change_handler.call({value: "open_source"});
+    helpers.update_discount_details("opensource");
     assert.equal(
         $("#sponsorship-discount-details").text(),
-        "Open source projects are eligible for fully sponsored (free) Zulip Standard.",
+        "Zulip Cloud Standard is free for open-source projects.",
     );
-    organization_type_change_handler.call({value: "research"});
+    helpers.update_discount_details("research");
     assert.equal(
         $("#sponsorship-discount-details").text(),
-        "Academic research organizations are eligible for fully sponsored (free) Zulip Standard.",
+        "Zulip Cloud Standard is free for academic research.",
     );
-    organization_type_change_handler.call({value: "event"});
+    helpers.update_discount_details("event");
     assert.equal(
         $("#sponsorship-discount-details").text(),
-        "Events are eligible for fully sponsored (free) Zulip Standard.",
+        "Zulip Cloud Standard is free for academic conferences and most non-profit events.",
     );
-    organization_type_change_handler.call({value: "education"});
+    helpers.update_discount_details("education");
     assert.equal(
         $("#sponsorship-discount-details").text(),
-        "Education use is eligible for an 85%-100% discount.",
+        "Zulip Cloud Standard is discounted 85% for education.",
     );
-    organization_type_change_handler.call({value: "non_profit"});
+    helpers.update_discount_details("nonprofit");
     assert.equal(
         $("#sponsorship-discount-details").text(),
-        "Nonprofits are eligible for an 85%-100% discount.",
+        "Zulip Cloud Standard is discounted 85%+ for registered non-profits.",
     );
-    organization_type_change_handler.call({value: "other"});
+    helpers.update_discount_details("other");
     assert.equal(
         $("#sponsorship-discount-details").text(),
-        "Your organization might be eligible for a discount or sponsorship.",
+        "Your organization may be eligible for a discount on Zulip Cloud Standard. Organizations whose members are not employees are generally eligible.",
     );
 });
 
 run_test("autopay_form_fields", () => {
-    assert.equal(document.querySelector("#autopay-form").dataset.key, "{{ publishable_key }}");
-    assert.equal(document.querySelector("#autopay-form").dataset.email, "{{ email }}");
     assert.equal(
         document.querySelector("#autopay-form [name=seat_count]").value,
         "{{ seat_count }}",
@@ -223,15 +204,15 @@ run_test("autopay_form_fields", () => {
     assert.equal(schedule_options[0].value, "monthly");
     assert.equal(schedule_options[1].value, "annual");
 
-    assert(document.querySelector("#autopay-error"));
-    assert(document.querySelector("#autopay-loading"));
-    assert(document.querySelector("#autopay"));
-    assert(document.querySelector("#autopay-success"));
-    assert(document.querySelector("#autopay_loading_indicator"));
+    assert.ok(document.querySelector("#autopay-error"));
+    assert.ok(document.querySelector("#autopay-loading"));
+    assert.ok(document.querySelector("#autopay"));
+    assert.ok(document.querySelector("#autopay-success"));
+    assert.ok(document.querySelector("#autopay_loading_indicator"));
 
-    assert(document.querySelector("input[name=csrfmiddlewaretoken]"));
+    assert.ok(document.querySelector("input[name=csrfmiddlewaretoken]"));
 
-    assert(document.querySelector("#free-trial-alert-message"));
+    assert.ok(document.querySelector("#free-trial-alert-message"));
 });
 
 run_test("invoice_form_fields", () => {
@@ -255,13 +236,13 @@ run_test("invoice_form_fields", () => {
     assert.equal(schedule_options.length, 1);
     assert.equal(schedule_options[0].value, "annual");
 
-    assert(document.querySelector("#invoice-error"));
-    assert(document.querySelector("#invoice-loading"));
-    assert(document.querySelector("#invoice"));
-    assert(document.querySelector("#invoice-success"));
-    assert(document.querySelector("#invoice_loading_indicator"));
+    assert.ok(document.querySelector("#invoice-error"));
+    assert.ok(document.querySelector("#invoice-loading"));
+    assert.ok(document.querySelector("#invoice"));
+    assert.ok(document.querySelector("#invoice-success"));
+    assert.ok(document.querySelector("#invoice_loading_indicator"));
 
-    assert(document.querySelector("input[name=csrfmiddlewaretoken]"));
+    assert.ok(document.querySelector("input[name=csrfmiddlewaretoken]"));
 
-    assert(document.querySelector("#free-trial-alert-message"));
+    assert.ok(document.querySelector("#free-trial-alert-message"));
 });

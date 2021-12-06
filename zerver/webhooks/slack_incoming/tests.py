@@ -2,9 +2,9 @@ from zerver.lib.test_classes import WebhookTestCase
 
 
 class SlackIncomingHookTests(WebhookTestCase):
-    STREAM_NAME = 'slack_incoming'
+    STREAM_NAME = "slack_incoming"
     URL_TEMPLATE = "/api/v1/external/slack_incoming?&api_key={api_key}&stream={stream}"
-    FIXTURE_DIR_NAME = 'slack_incoming'
+    WEBHOOK_DIR_NAME = "slack_incoming"
 
     def test_message(self) -> None:
         expected_topic = "(no topic)"
@@ -13,7 +13,15 @@ Hello, world.
 """.strip()
 
         self.check_webhook(
-            "text", expected_topic, expected_message,
+            "text",
+            expected_topic,
+            expected_message,
+        )
+
+    def test_null_message(self) -> None:
+        self.check_webhook(
+            "null_text",
+            expect_noop=True,
         )
 
     def test_message_as_www_urlencoded(self) -> None:
@@ -32,14 +40,16 @@ Hello, world.
     def test_message_with_actions(self) -> None:
         expected_topic = "C1H9RESGL"
         expected_message = """
-Danny Torrence left the following review for your property:
+Danny Torrence left the following *review* for your property:
 
 [Overlook Hotel](https://google.com) \n :star: \n Doors had too many axe holes, guest in room 237 was far too rowdy, whole place felt stuck in the 1920s.
 [Haunted hotel image](https://is5-ssl.mzstatic.com/image/thumb/Purple3/v4/d3/72/5c/d3725c8f-c642-5d69-1904-aa36e4297885/source/256x256bb.jpg)
 """.strip()
 
         self.check_webhook(
-            "actions", expected_topic, expected_message,
+            "actions",
+            expected_topic,
+            expected_message,
         )
 
     def test_message_with_blocks(self) -> None:
@@ -52,7 +62,9 @@ Danny Torrence left the following review for your property:
 """.strip()
 
         self.check_webhook(
-            "blocks", expected_topic, expected_message,
+            "blocks",
+            expected_topic,
+            expected_message,
         )
 
     def test_message_with_attachment(self) -> None:
@@ -80,7 +92,9 @@ Danny Torrence left the following review for your property:
 """.strip()
 
         self.check_webhook(
-            "attachment", expected_topic, expected_message,
+            "attachment",
+            expected_topic,
+            expected_message,
         )
 
     def get_body(self, fixture_name: str) -> str:

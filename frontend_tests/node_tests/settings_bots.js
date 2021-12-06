@@ -2,20 +2,10 @@
 
 const {strict: assert} = require("assert");
 
-const rewiremock = require("rewiremock/node");
-
-const {set_global, zrequire} = require("../zjsunit/namespace");
+const {mock_cjs, mock_esm, zrequire} = require("../zjsunit/namespace");
 const {run_test} = require("../zjsunit/test");
-const {make_zjquery} = require("../zjsunit/zjquery");
-
-set_global("page_params", {
-    realm_uri: "https://chat.example.com",
-    realm_embedded_bots: [
-        {name: "converter", config: {}},
-        {name: "giphy", config: {key: "12345678"}},
-        {name: "foobot", config: {bar: "baz", qux: "quux"}},
-    ],
-});
+const $ = require("../zjsunit/zjquery");
+const {page_params} = require("../zjsunit/zpage_params");
 
 const bot_data_params = {
     realm_bots: [
@@ -29,24 +19,32 @@ const bot_data_params = {
     ],
 };
 
-set_global("avatar", {});
-
-set_global("$", make_zjquery());
-
-zrequire("bot_data");
-zrequire("people");
+const avatar = mock_esm("../../static/js/avatar");
 
 function ClipboardJS(sel) {
     assert.equal(sel, "#copy_zuliprc");
 }
+mock_cjs("clipboard", ClipboardJS);
 
-rewiremock.proxy(() => zrequire("settings_bots"), {
-    clipboard: ClipboardJS,
-});
+const bot_data = zrequire("bot_data");
+const settings_bots = zrequire("settings_bots");
 
 bot_data.initialize(bot_data_params);
 
-run_test("generate_zuliprc_uri", () => {
+function test(label, f) {
+    run_test(label, ({override}) => {
+        page_params.realm_uri = "https://chat.example.com";
+        page_params.realm_embedded_bots = [
+            {name: "converter", config: {}},
+            {name: "giphy", config: {key: "12345678"}},
+            {name: "foobot", config: {bar: "baz", qux: "quux"}},
+        ];
+
+        f({override});
+    });
+}
+
+test("generate_zuliprc_uri", () => {
     const uri = settings_bots.generate_zuliprc_uri(1);
     const expected =
         "data:application/octet-stream;charset=utf-8," +
@@ -59,7 +57,7 @@ run_test("generate_zuliprc_uri", () => {
     assert.equal(uri, expected);
 });
 
-run_test("generate_zuliprc_content", () => {
+test("generate_zuliprc_content", () => {
     const bot_user = bot_data.get(1);
     const content = settings_bots.generate_zuliprc_content(bot_user);
     const expected =
@@ -70,7 +68,7 @@ run_test("generate_zuliprc_content", () => {
     assert.equal(content, expected);
 });
 
-run_test("generate_botserverrc_content", () => {
+test("generate_botserverrc_content", () => {
     const user = {
         email: "vabstest-bot@zulip.com",
         api_key: "nSlA0mUm7G42LP85lMv7syqFTzDE2q34",
@@ -102,31 +100,27 @@ function test_create_bot_type_input_box_toggle(f) {
 
     $("#create_bot_type :selected").val(EMBEDDED_BOT_TYPE);
     f();
-    assert(!create_payload_url.hasClass("required"));
-    assert(!payload_url_inputbox.visible());
-    assert($("#select_service_name").hasClass("required"));
-    assert($("#service_name_list").visible());
-    assert(config_inputbox.visible());
+    assert.ok(!create_payload_url.hasClass("required"));
+    assert.ok(!payload_url_inputbox.visible());
+    assert.ok($("#select_service_name").hasClass("required"));
+    assert.ok($("#service_name_list").visible());
+    assert.ok(config_inputbox.visible());
 
     $("#create_bot_type :selected").val(OUTGOING_WEBHOOK_BOT_TYPE);
     f();
-    assert(create_payload_url.hasClass("required"));
-    assert(payload_url_inputbox.visible());
-    assert(!config_inputbox.visible());
+    assert.ok(create_payload_url.hasClass("required"));
+    assert.ok(payload_url_inputbox.visible());
+    assert.ok(!config_inputbox.visible());
 
     $("#create_bot_type :selected").val(GENERIC_BOT_TYPE);
     f();
-    assert(!create_payload_url.hasClass("required"));
-    assert(!payload_url_inputbox.visible());
-    assert(!config_inputbox.visible());
+    assert.ok(!create_payload_url.hasClass("required"));
+    assert.ok(!payload_url_inputbox.visible());
+    assert.ok(!config_inputbox.visible());
 }
 
-function set_up() {
-    set_global("$", make_zjquery());
-
-    // bunch of stubs
-
-    $.validator = {addMethod: () => {}};
+test("test tab clicks", ({override}) => {
+    override($.validator, "addMethod", () => {});
 
     $("#create_bot_form").validate = () => {};
 
@@ -136,20 +130,12 @@ function set_up() {
         };
         return mock_children;
     };
-    avatar.build_bot_create_widget = () => {};
-    avatar.build_bot_edit_widget = () => {};
+
+    override(avatar, "build_bot_create_widget", () => {});
 
     settings_bots.set_up();
 
     test_create_bot_type_input_box_toggle(() => $("#create_bot_type").trigger("change"));
-}
-
-run_test("set_up", () => {
-    set_up();
-});
-
-run_test("test tab clicks", () => {
-    set_up();
 
     function click_on_tab(tab_elem) {
         tab_elem.trigger("click");
@@ -174,48 +160,42 @@ run_test("test tab clicks", () => {
         inactive: $("#inactive_bots_list"),
     };
 
-    (function () {
-        click_on_tab(tabs.add);
-        assert(tabs.add.hasClass("active"));
-        assert(!tabs.active.hasClass("active"));
-        assert(!tabs.inactive.hasClass("active"));
+    click_on_tab(tabs.add);
+    assert.ok(tabs.add.hasClass("active"));
+    assert.ok(!tabs.active.hasClass("active"));
+    assert.ok(!tabs.inactive.hasClass("active"));
 
-        assert(forms.add.visible());
-        assert(!forms.active.visible());
-        assert(!forms.inactive.visible());
-    })();
+    assert.ok(forms.add.visible());
+    assert.ok(!forms.active.visible());
+    assert.ok(!forms.inactive.visible());
 
-    (function () {
-        click_on_tab(tabs.active);
-        assert(!tabs.add.hasClass("active"));
-        assert(tabs.active.hasClass("active"));
-        assert(!tabs.inactive.hasClass("active"));
+    click_on_tab(tabs.active);
+    assert.ok(!tabs.add.hasClass("active"));
+    assert.ok(tabs.active.hasClass("active"));
+    assert.ok(!tabs.inactive.hasClass("active"));
 
-        assert(!forms.add.visible());
-        assert(forms.active.visible());
-        assert(!forms.inactive.visible());
-    })();
+    assert.ok(!forms.add.visible());
+    assert.ok(forms.active.visible());
+    assert.ok(!forms.inactive.visible());
 
-    (function () {
-        click_on_tab(tabs.inactive);
-        assert(!tabs.add.hasClass("active"));
-        assert(!tabs.active.hasClass("active"));
-        assert(tabs.inactive.hasClass("active"));
+    click_on_tab(tabs.inactive);
+    assert.ok(!tabs.add.hasClass("active"));
+    assert.ok(!tabs.active.hasClass("active"));
+    assert.ok(tabs.inactive.hasClass("active"));
 
-        assert(!forms.add.visible());
-        assert(!forms.active.visible());
-        assert(forms.inactive.visible());
-    })();
+    assert.ok(!forms.add.visible());
+    assert.ok(!forms.active.visible());
+    assert.ok(forms.inactive.visible());
 });
 
-run_test("can_create_new_bots", () => {
+test("can_create_new_bots", () => {
     page_params.is_admin = true;
-    assert(settings_bots.can_create_new_bots());
+    assert.ok(settings_bots.can_create_new_bots());
 
     page_params.is_admin = false;
     page_params.realm_bot_creation_policy = 1;
-    assert(settings_bots.can_create_new_bots());
+    assert.ok(settings_bots.can_create_new_bots());
 
     page_params.realm_bot_creation_policy = 3;
-    assert(!settings_bots.can_create_new_bots());
+    assert.ok(!settings_bots.can_create_new_bots());
 });

@@ -1,5 +1,5 @@
 import os
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set
 
 from scripts.lib.zulip_tools import deport
 
@@ -8,6 +8,8 @@ from .config import DEVELOPMENT, PRODUCTION, get_secret
 if TYPE_CHECKING:
     from django_auth_ldap.config import LDAPSearch
     from typing_extensions import TypedDict
+
+    from zerver.lib.types import SAMLIdPConfigDict
 
 if PRODUCTION:
     from .prod_settings import EXTERNAL_HOST, ZULIP_ADMINISTRATOR
@@ -29,7 +31,7 @@ ALLOWED_HOSTS: List[str] = []
 NOREPLY_EMAIL_ADDRESS = "noreply@" + EXTERNAL_HOST_WITHOUT_PORT
 ADD_TOKENS_TO_NOREPLY_ADDRESS = True
 TOKENIZED_NOREPLY_EMAIL_ADDRESS = "noreply-{token}@" + EXTERNAL_HOST_WITHOUT_PORT
-PHYSICAL_ADDRESS = ''
+PHYSICAL_ADDRESS = ""
 FAKE_EMAIL_DOMAIN = EXTERNAL_HOST_WITHOUT_PORT
 
 # SMTP settings
@@ -39,10 +41,19 @@ EMAIL_HOST: Optional[str] = None
 
 # LDAP auth
 AUTH_LDAP_SERVER_URI = ""
+AUTH_LDAP_BIND_DN = ""
+AUTH_LDAP_USER_SEARCH: Optional["LDAPSearch"] = None
 LDAP_APPEND_DOMAIN: Optional[str] = None
 LDAP_EMAIL_ATTR: Optional[str] = None
-AUTH_LDAP_USERNAME_ATTR: Optional[str] = None
 AUTH_LDAP_REVERSE_EMAIL_SEARCH: Optional["LDAPSearch"] = None
+AUTH_LDAP_USERNAME_ATTR: Optional[str] = None
+# AUTH_LDAP_USER_ATTR_MAP is uncommented in prod_settings_template.py,
+# so the value here mainly serves to help document the default.
+AUTH_LDAP_USER_ATTR_MAP: Dict[str, str] = {
+    "full_name": "cn",
+}
+# Automatically deactivate users not found by the AUTH_LDAP_USER_SEARCH query.
+LDAP_DEACTIVATE_NON_MATCHING_USERS: Optional[bool] = None
 # AUTH_LDAP_CONNECTION_OPTIONS: we set ldap.OPT_REFERRALS in settings.py if unset.
 AUTH_LDAP_CONNECTION_OPTIONS: Dict[int, object] = {}
 # Disable django-auth-ldap caching, to prevent problems with OU changes.
@@ -54,24 +65,25 @@ AUTH_LDAP_ALWAYS_UPDATE_USER = False
 # Detailed docs in zproject/dev_settings.py.
 FAKE_LDAP_MODE: Optional[str] = None
 FAKE_LDAP_NUM_USERS = 8
+AUTH_LDAP_ADVANCED_REALM_ACCESS_CONTROL: Optional[Dict[str, Any]] = None
 
 # Social auth; we support providing values for some of these
 # settings in zulip-secrets.conf instead of settings.py in development.
-SOCIAL_AUTH_GITHUB_KEY = get_secret('social_auth_github_key', development_only=True)
+SOCIAL_AUTH_GITHUB_KEY = get_secret("social_auth_github_key", development_only=True)
 SOCIAL_AUTH_GITHUB_ORG_NAME: Optional[str] = None
 SOCIAL_AUTH_GITHUB_TEAM_ID: Optional[str] = None
-SOCIAL_AUTH_GITLAB_KEY = get_secret('social_auth_gitlab_key', development_only=True)
+SOCIAL_AUTH_GITLAB_KEY = get_secret("social_auth_gitlab_key", development_only=True)
 SOCIAL_AUTH_SUBDOMAIN: Optional[str] = None
-SOCIAL_AUTH_AZUREAD_OAUTH2_SECRET = get_secret('azure_oauth2_secret')
-SOCIAL_AUTH_GOOGLE_KEY = get_secret('social_auth_google_key', development_only=True)
+SOCIAL_AUTH_AZUREAD_OAUTH2_SECRET = get_secret("azure_oauth2_secret")
+SOCIAL_AUTH_GOOGLE_KEY = get_secret("social_auth_google_key", development_only=True)
 # SAML:
 SOCIAL_AUTH_SAML_SP_ENTITY_ID: Optional[str] = None
-SOCIAL_AUTH_SAML_SP_PUBLIC_CERT = ''
-SOCIAL_AUTH_SAML_SP_PRIVATE_KEY = ''
+SOCIAL_AUTH_SAML_SP_PUBLIC_CERT = ""
+SOCIAL_AUTH_SAML_SP_PRIVATE_KEY = ""
 SOCIAL_AUTH_SAML_ORG_INFO: Optional[Dict[str, Dict[str, str]]] = None
 SOCIAL_AUTH_SAML_TECHNICAL_CONTACT: Optional[Dict[str, str]] = None
 SOCIAL_AUTH_SAML_SUPPORT_CONTACT: Optional[Dict[str, str]] = None
-SOCIAL_AUTH_SAML_ENABLED_IDPS: Dict[str, Dict[str, str]] = {}
+SOCIAL_AUTH_SAML_ENABLED_IDPS: Dict[str, "SAMLIdPConfigDict"] = {}
 SOCIAL_AUTH_SAML_SECURITY_CONFIG: Dict[str, Any] = {}
 # Set this to True to enforce that any configured IdP needs to specify
 # the limit_to_subdomains setting to be considered valid:
@@ -80,21 +92,30 @@ SAML_REQUIRE_LIMIT_TO_SUBDOMAINS = False
 GOOGLE_OAUTH2_CLIENT_ID: Optional[str] = None
 
 # Apple:
-SOCIAL_AUTH_APPLE_SERVICES_ID = get_secret('social_auth_apple_services_id', development_only=True)
-SOCIAL_AUTH_APPLE_APP_ID = get_secret('social_auth_apple_app_id', development_only=True)
-SOCIAL_AUTH_APPLE_KEY = get_secret('social_auth_apple_key', development_only=True)
-SOCIAL_AUTH_APPLE_TEAM = get_secret('social_auth_apple_team', development_only=True)
-SOCIAL_AUTH_APPLE_SCOPE = ['name', 'email']
+SOCIAL_AUTH_APPLE_SERVICES_ID = get_secret("social_auth_apple_services_id", development_only=True)
+SOCIAL_AUTH_APPLE_APP_ID = get_secret("social_auth_apple_app_id", development_only=True)
+SOCIAL_AUTH_APPLE_KEY = get_secret("social_auth_apple_key", development_only=True)
+SOCIAL_AUTH_APPLE_TEAM = get_secret("social_auth_apple_team", development_only=True)
+SOCIAL_AUTH_APPLE_SCOPE = ["name", "email"]
 SOCIAL_AUTH_APPLE_EMAIL_AS_USERNAME = True
+
+# Generic OpenID Connect:
+SOCIAL_AUTH_OIDC_ENABLED_IDPS: Dict[str, Dict[str, Optional[str]]] = {}
+SOCIAL_AUTH_OIDC_FULL_NAME_VALIDATED = False
+
+SOCIAL_AUTH_SYNC_CUSTOM_ATTRS_DICT: Dict[str, Dict[str, Dict[str, str]]] = {}
 
 # Other auth
 SSO_APPEND_DOMAIN: Optional[str] = None
 
-VIDEO_ZOOM_CLIENT_ID = get_secret('video_zoom_client_id', development_only=True)
-VIDEO_ZOOM_CLIENT_SECRET = get_secret('video_zoom_client_secret')
+VIDEO_ZOOM_CLIENT_ID = get_secret("video_zoom_client_id", development_only=True)
+VIDEO_ZOOM_CLIENT_SECRET = get_secret("video_zoom_client_secret")
+VIDEO_ZOOM_TESTING_REALMS: Set[str] = set()
+VIDEO_ZOOM_TESTING_CLIENT_ID = get_secret("video_zoom_testing_client_id", development_only=True)
+VIDEO_ZOOM_TESTING_CLIENT_SECRET = get_secret("video_zoom_testing_client_secret")
 
 # Email gateway
-EMAIL_GATEWAY_PATTERN = ''
+EMAIL_GATEWAY_PATTERN = ""
 EMAIL_GATEWAY_LOGIN: Optional[str] = None
 EMAIL_GATEWAY_IMAP_SERVER: Optional[str] = None
 EMAIL_GATEWAY_IMAP_PORT: Optional[int] = None
@@ -112,21 +133,25 @@ LOGGING_SHOW_PID = False
 SENTRY_DSN: Optional[str] = None
 
 # File uploads and avatars
-DEFAULT_AVATAR_URI = '/static/images/default-avatar.png'
-DEFAULT_LOGO_URI = '/static/images/logo/zulip-org-logo.svg'
-S3_AVATAR_BUCKET = ''
-S3_AUTH_UPLOADS_BUCKET = ''
-S3_REGION = None
-S3_ENDPOINT_URL = None
+# TODO: Rename MAX_FILE_UPLOAD_SIZE to have unit in name.
+DEFAULT_AVATAR_URI = "/static/images/default-avatar.png"
+DEFAULT_LOGO_URI = "/static/images/logo/zulip-org-logo.svg"
+S3_AVATAR_BUCKET = ""
+S3_AUTH_UPLOADS_BUCKET = ""
+S3_REGION: Optional[str] = None
+S3_ENDPOINT_URL: Optional[str] = None
 LOCAL_UPLOADS_DIR: Optional[str] = None
 MAX_FILE_UPLOAD_SIZE = 25
 
 # Jitsi Meet video call integration; set to None to disable integration.
-JITSI_SERVER_URL = 'https://meet.jit.si'
+JITSI_SERVER_URL = "https://meet.jit.si"
+
+# GIPHY API key.
+GIPHY_API_KEY = get_secret("giphy_api_key")
 
 # Allow setting BigBlueButton settings in zulip-secrets.conf in
 # development; this is useful since there are no public BigBlueButton servers.
-BIG_BLUE_BUTTON_URL = get_secret('big_blue_button_url', development_only=True)
+BIG_BLUE_BUTTON_URL = get_secret("big_blue_button_url", development_only=True)
 
 # Max state storage per user
 # TODO: Add this to zproject/prod_settings_template.py once stateful bots are fully functional.
@@ -135,18 +160,16 @@ USER_STATE_SIZE_LIMIT = 10000000
 BOT_CONFIG_SIZE_LIMIT = 10000
 
 # External service configuration
-CAMO_URI = ''
-MEMCACHED_LOCATION = '127.0.0.1:11211'
+CAMO_URI = ""
+MEMCACHED_LOCATION = "127.0.0.1:11211"
 MEMCACHED_USERNAME = None if get_secret("memcached_password") is None else "zulip@localhost"
-RABBITMQ_HOST = '127.0.0.1'
-RABBITMQ_USERNAME = 'zulip'
-REDIS_HOST = '127.0.0.1'
+RABBITMQ_HOST = "127.0.0.1"
+RABBITMQ_USERNAME = "zulip"
+REDIS_HOST = "127.0.0.1"
 REDIS_PORT = 6379
-REMOTE_POSTGRES_HOST = ''
-REMOTE_POSTGRES_PORT = ''
-REMOTE_POSTGRES_SSLMODE = ''
-THUMBOR_URL = ''
-THUMBOR_SERVES_CAMO = False
+REMOTE_POSTGRES_HOST = ""
+REMOTE_POSTGRES_PORT = ""
+REMOTE_POSTGRES_SSLMODE = ""
 THUMBNAIL_IMAGES = False
 SENDFILE_BACKEND: Optional[str] = None
 
@@ -169,8 +192,10 @@ PASSWORD_MIN_GUESSES = 10000
 PUSH_NOTIFICATION_BOUNCER_URL: Optional[str] = None
 PUSH_NOTIFICATION_REDACT_CONTENT = False
 SUBMIT_USAGE_STATISTICS = True
+PROMOTE_SPONSORING_ZULIP = True
 RATE_LIMITING = True
 RATE_LIMITING_AUTHENTICATE = True
+RATE_LIMIT_TOR_TOGETHER = False
 SEND_LOGIN_EMAILS = True
 EMBEDDED_BOTS_ENABLED = False
 
@@ -180,6 +205,10 @@ TWO_FACTOR_AUTHENTICATION_ENABLED = False
 # This is used to send all hotspots for convenient manual testing
 # in development mode.
 ALWAYS_SEND_ALL_HOTSPOTS = False
+
+# The new user tutorial is enabled by default, but can be disabled for
+# self-hosters who want to disable the tutorial entirely on their system.
+TUTORIAL_ENABLED = True
 
 # In-development search pills feature.
 SEARCH_PILLS_ENABLED = False
@@ -200,12 +229,12 @@ DEVELOPMENT_LOG_EMAILS = DEVELOPMENT
 #    one or a handful of realms, though they might on an installation
 #    like Zulip Cloud or to work around a problem on another server.
 
-NOTIFICATION_BOT = 'notification-bot@zulip.com'
-EMAIL_GATEWAY_BOT = 'emailgateway@zulip.com'
-NAGIOS_SEND_BOT = 'nagios-send-bot@zulip.com'
-NAGIOS_RECEIVE_BOT = 'nagios-receive-bot@zulip.com'
-WELCOME_BOT = 'welcome-bot@zulip.com'
-REMINDER_BOT = 'reminder-bot@zulip.com'
+NOTIFICATION_BOT = "notification-bot@zulip.com"
+EMAIL_GATEWAY_BOT = "emailgateway@zulip.com"
+NAGIOS_SEND_BOT = "nagios-send-bot@zulip.com"
+NAGIOS_RECEIVE_BOT = "nagios-receive-bot@zulip.com"
+WELCOME_BOT = "welcome-bot@zulip.com"
+REMINDER_BOT = "reminder-bot@zulip.com"
 
 # The following bots are optional system bots not enabled by
 # default.  The default ones are defined in INTERNAL_BOTS, in settings.py.
@@ -215,20 +244,17 @@ REMINDER_BOT = 'reminder-bot@zulip.com'
 ERROR_BOT: Optional[str] = None
 # These are extra bot users for our end-to-end Nagios message
 # sending tests.
-NAGIOS_STAGING_SEND_BOT = 'nagios-staging-send-bot@zulip.com' if PRODUCTION else None
-NAGIOS_STAGING_RECEIVE_BOT = 'nagios-staging-receive-bot@zulip.com' if PRODUCTION else None
+NAGIOS_STAGING_SEND_BOT = "nagios-staging-send-bot@zulip.com" if PRODUCTION else None
+NAGIOS_STAGING_RECEIVE_BOT = "nagios-staging-receive-bot@zulip.com" if PRODUCTION else None
 # SYSTEM_BOT_REALM would be a constant always set to 'zulip',
 # except that it isn't that on Zulip Cloud.  We will likely do a
 # migration and eliminate this parameter in the future.
-SYSTEM_BOT_REALM = 'zulipinternal'
+SYSTEM_BOT_REALM = "zulipinternal"
 
 # Structurally, we will probably eventually merge
 # analytics into part of the main server, rather
 # than a separate app.
-EXTRA_INSTALLED_APPS = ['analytics']
-
-# Default GOOGLE_CLIENT_ID to the value needed for Android auth to work
-GOOGLE_CLIENT_ID = '835904834568-77mtr5mtmpgspj9b051del9i9r5t4g4n.apps.googleusercontent.com'
+EXTRA_INSTALLED_APPS = ["analytics"]
 
 # Used to construct URLs to point to the Zulip server.  Since we
 # only support HTTPS in production, this is just for development.
@@ -237,9 +263,15 @@ EXTERNAL_URI_SCHEME = "https://"
 # Whether anyone can create a new organization on the Zulip server.
 OPEN_REALM_CREATION = False
 
+# Whether it's possible to create web-public streams on this server.
+WEB_PUBLIC_STREAMS_ENABLED = False
+
 # Setting for where the system bot users are.  Likely has no
 # purpose now that the REALMS_HAVE_SUBDOMAINS migration is finished.
 SYSTEM_ONLY_REALMS = {"zulip"}
+
+# Default deadline for demo organizations
+DEMO_ORG_DEADLINE_DAYS = 30
 
 # Alternate hostnames to serve particular realms on, in addition to
 # their usual subdomains.  Keys are realm string_ids (aka subdomains),
@@ -266,10 +298,6 @@ EMAIL_BACKEND: Optional[str] = None
 # Set in settings.py when email isn't configured.
 WARN_NO_EMAIL = False
 
-# Whether to keep extra frontend stack trace data.
-# TODO: Investigate whether this should be removed and set one way or other.
-SAVE_FRONTEND_STACKTRACES = False
-
 # If True, disable rate-limiting and other filters on sending error messages
 # to admins, and enable logging on the error-reporting itself.  Useful
 # mainly in development.
@@ -285,15 +313,15 @@ POST_MIGRATION_CACHE_FLUSHING = False
 # server.
 APNS_CERT_FILE: Optional[str] = None
 APNS_SANDBOX = True
-APNS_TOPIC = 'org.zulip.Zulip'
-ZULIP_IOS_APP_ID = 'org.zulip.Zulip'
+APNS_TOPIC = "org.zulip.Zulip"
+ZULIP_IOS_APP_ID = "org.zulip.Zulip"
 
 # Limits related to the size of file uploads; last few in MB.
 DATA_UPLOAD_MAX_MEMORY_SIZE = 25 * 1024 * 1024
-MAX_AVATAR_FILE_SIZE = 5
-MAX_ICON_FILE_SIZE = 5
-MAX_LOGO_FILE_SIZE = 5
-MAX_EMOJI_FILE_SIZE = 5
+MAX_AVATAR_FILE_SIZE_MIB = 5
+MAX_ICON_FILE_SIZE_MIB = 5
+MAX_LOGO_FILE_SIZE_MIB = 5
+MAX_EMOJI_FILE_SIZE_MIB = 5
 
 # Limits to help prevent spam, in particular by sending invitations.
 #
@@ -313,16 +341,8 @@ REGISTER_LINK_DISABLED: Optional[bool] = None
 LOGIN_LINK_DISABLED = False
 FIND_TEAM_LINK_DISABLED = True
 
-# Controls if the server should run certain jobs like deliver_email or
-# deliver_scheduled_messages. This setting in long term is meant for
-# handling jobs for which we don't have a means of establishing a locking
-# mechanism that works with multiple servers running these jobs.
-# TODO: We should rename this setting so that it reflects its purpose actively.
-EMAIL_DELIVERER_DISABLED = False
-
 # What domains to treat like the root domain
-# "auth" is by default a reserved subdomain for the use by python-social-auth.
-ROOT_SUBDOMAIN_ALIASES = ["www", "auth"]
+ROOT_SUBDOMAIN_ALIASES = ["www"]
 # Whether the root domain is a landing page or can host a realm.
 ROOT_DOMAIN_LANDING_PAGE = False
 
@@ -343,19 +363,21 @@ TOS_VERSION: Optional[str] = None
 FIRST_TIME_TOS_TEMPLATE: Optional[str] = None
 
 # Hostname used for Zulip's statsd logging integration.
-STATSD_HOST = ''
+STATSD_HOST = ""
 
 # Configuration for JWT auth.
 if TYPE_CHECKING:
+
     class JwtAuthKey(TypedDict):
         key: str
         # See https://pyjwt.readthedocs.io/en/latest/algorithms.html for a list
         # of supported algorithms.
         algorithms: List[str]
 
+
 JWT_AUTH_KEYS: Dict[str, "JwtAuthKey"] = {}
 
-# https://docs.djangoproject.com/en/2.2/ref/settings/#std:setting-SERVER_EMAIL
+# https://docs.djangoproject.com/en/3.2/ref/settings/#std:setting-SERVER_EMAIL
 # Django setting for what from address to use in error emails.
 SERVER_EMAIL = ZULIP_ADMINISTRATOR
 # Django setting for who receives error emails.
@@ -386,8 +408,6 @@ LOG_API_EVENT_TYPES = False
 # the server.
 # TODO: Replace this with a smarter "run on only one server" system.
 STAGING = False
-# Configuration option for our email/Zulip error reporting.
-STAGING_ERROR_NOTIFICATIONS = False
 
 # How long to wait before presence should treat a user as offline.
 # TODO: Figure out why this is different from the corresponding
@@ -395,15 +415,19 @@ STAGING_ERROR_NOTIFICATIONS = False
 # default_settings, since it likely isn't usefully user-configurable.
 OFFLINE_THRESHOLD_SECS = 5 * 60
 
+# Specifies the number of active users in the realm
+# above which sending of presence update events will be disabled.
+USER_LIMIT_FOR_SENDING_PRESENCE_UPDATE_EVENTS = 100
+
 # How many days deleted messages data should be kept before being
 # permanently deleted.
-ARCHIVED_DATA_VACUUMING_DELAY_DAYS = 7
+ARCHIVED_DATA_VACUUMING_DELAY_DAYS = 30
 
 # Enables billing pages and plan-based feature gates. If False, all features
 # are available to all realms.
 BILLING_ENABLED = False
 
-FREE_TRIAL_DAYS: Optional[int] = int(get_secret('free_trial_days', "0"))
+FREE_TRIAL_DAYS: Optional[int] = int(get_secret("free_trial_days", "0"))
 
 # Custom message (supports HTML) to be shown in the navbar of landing pages. Used mainly for
 # making announcements.
@@ -424,8 +448,24 @@ IS_DEV_DROPLET = False
 # Used by puppet/zulip_ops/files/cron.d/check_send_receive_time.
 NAGIOS_BOT_HOST = EXTERNAL_HOST
 
-# Automatically deactivate users not found by the AUTH_LDAP_USER_SEARCH query.
-LDAP_DEACTIVATE_NON_MATCHING_USERS: Optional[bool] = None
-
 # Use half of the available CPUs for data import purposes.
 DEFAULT_DATA_EXPORT_IMPORT_PARALLELISM = (len(os.sched_getaffinity(0)) // 2) or 1
+
+# How long after the last upgrade to nag users that the server needs
+# to be upgraded because of likely security releases in the meantime.
+# Default is 18 months, constructed as 12 months before someone should
+# upgrade, plus 6 months for the system administrator to get around to it.
+SERVER_UPGRADE_NAG_DEADLINE_DAYS = 30 * 18
+
+# How long servers have to respond to outgoing webhook requests
+OUTGOING_WEBHOOK_TIMEOUT_SECONDS = 10
+
+# Maximum length of message content allowed.
+# Any message content exceeding this limit will be truncated.
+# See: `_internal_prep_message` function in zerver/lib/actions.py.
+MAX_MESSAGE_LENGTH = 10000
+
+# The maximum number of drafts to send in the response to /register.
+# More drafts, should they exist for some crazy reason, could be
+# fetched in a separate request.
+MAX_DRAFTS_IN_REGISTER_RESPONSE = 1000

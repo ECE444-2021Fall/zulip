@@ -1,24 +1,22 @@
-"use strict";
+import _ from "lodash";
 
-const _ = require("lodash");
+import * as blueslip from "./blueslip";
+import {FetchStatus} from "./fetch_status";
+import {Filter} from "./filter";
+import * as muted_topics from "./muted_topics";
+import * as muted_users from "./muted_users";
+import {page_params} from "./page_params";
+import * as unread from "./unread";
+import * as util from "./util";
 
-const util = require("./util");
-
-class MessageListData {
-    constructor(opts) {
-        this.muting_enabled = opts.muting_enabled;
-        if (this.muting_enabled) {
-            this._all_items = [];
-        }
+export class MessageListData {
+    constructor({excludes_muted_topics, filter = new Filter()}) {
+        this.excludes_muted_topics = excludes_muted_topics;
+        this._all_items = [];
         this._items = [];
         this._hash = new Map();
         this._local_only = new Set();
         this._selected_id = -1;
-
-        let filter = opts.filter;
-        if (filter === undefined) {
-            filter = new Filter();
-        }
 
         this.filter = filter;
         this.fetch_status = new FetchStatus();
@@ -110,10 +108,7 @@ class MessageListData {
     }
 
     clear() {
-        if (this.muting_enabled) {
-            this._all_items = [];
-        }
-
+        this._all_items = [];
         this._items = [];
         this._hash.clear();
     }
@@ -167,20 +162,55 @@ class MessageListData {
 
     filter_incoming(messages) {
         const predicate = this._get_predicate();
-        return messages.filter(predicate);
+        return messages.filter((message) => predicate(message));
+    }
+
+    messages_filtered_for_topic_mutes(messages) {
+        if (!this.excludes_muted_topics) {
+            return [...messages];
+        }
+
+        return messages.filter((message) => {
+            if (message.type !== "stream") {
+                return true;
+            }
+            return (
+                !muted_topics.is_topic_muted(message.stream_id, message.topic) || message.mentioned
+            );
+        });
+    }
+
+    messages_filtered_for_user_mutes(messages) {
+        if (this.filter.is_non_huddle_pm()) {
+            // We are in a 1:1 PM narrow, so do not do any filtering.
+            return [...messages];
+        }
+
+        return messages.filter((message) => {
+            if (message.type !== "private") {
+                return true;
+            }
+            const recipients = util.extract_pm_recipients(message.to_user_ids);
+            if (recipients.length > 1) {
+                // Huddle message
+                return true;
+            }
+
+            const recipient_id = Number.parseInt(recipients[0], 10);
+            return (
+                !muted_users.is_user_muted(recipient_id) &&
+                !muted_users.is_user_muted(message.sender_id)
+            );
+        });
     }
 
     unmuted_messages(messages) {
-        return messages.filter(
-            (message) =>
-                !muting.is_topic_muted(message.stream_id, message.topic) || message.mentioned,
+        return this.messages_filtered_for_topic_mutes(
+            this.messages_filtered_for_user_mutes(messages),
         );
     }
 
     update_items_for_muting() {
-        if (!this.muting_enabled) {
-            return;
-        }
         this._items = this.unmuted_messages(this._all_items);
     }
 
@@ -252,47 +282,37 @@ class MessageListData {
         // This should be used internally when we have
         // "interior" messages to add and can't optimize
         // things by only doing prepend or only doing append.
-        let viewable_messages;
-        if (this.muting_enabled) {
-            this._all_items = messages.concat(this._all_items);
-            this._all_items.sort((a, b) => a.id - b.id);
 
-            viewable_messages = this.unmuted_messages(messages);
-            this._items = viewable_messages.concat(this._items);
-        } else {
-            viewable_messages = messages;
-            this._items = messages.concat(this._items);
-        }
+        const viewable_messages = this.unmuted_messages(messages);
 
+        this._all_items = messages.concat(this._all_items);
+        this._all_items.sort((a, b) => a.id - b.id);
+
+        this._items = viewable_messages.concat(this._items);
         this._items.sort((a, b) => a.id - b.id);
+
         this._add_to_hash(messages);
         return viewable_messages;
     }
 
     append(messages) {
         // Caller should have already filtered
-        let viewable_messages;
-        if (this.muting_enabled) {
-            this._all_items = this._all_items.concat(messages);
-            viewable_messages = this.unmuted_messages(messages);
-        } else {
-            viewable_messages = messages;
-        }
+        const viewable_messages = this.unmuted_messages(messages);
+
+        this._all_items = this._all_items.concat(messages);
         this._items = this._items.concat(viewable_messages);
+
         this._add_to_hash(messages);
         return viewable_messages;
     }
 
     prepend(messages) {
         // Caller should have already filtered
-        let viewable_messages;
-        if (this.muting_enabled) {
-            this._all_items = messages.concat(this._all_items);
-            viewable_messages = this.unmuted_messages(messages);
-        } else {
-            viewable_messages = messages;
-        }
+        const viewable_messages = this.unmuted_messages(messages);
+
+        this._all_items = messages.concat(this._all_items);
         this._items = viewable_messages.concat(this._items);
+
         this._add_to_hash(messages);
         return viewable_messages;
     }
@@ -304,11 +324,8 @@ class MessageListData {
             this._local_only.delete(id);
         }
 
-        const remove_messages = (msg) => !msg_ids_to_remove.has(msg.id);
-        this._items = this._items.filter(remove_messages);
-        if (this.muting_enabled) {
-            this._all_items = this._all_items.filter(remove_messages);
-        }
+        this._items = this._items.filter((msg) => !msg_ids_to_remove.has(msg.id));
+        this._all_items = this._all_items.filter((msg) => !msg_ids_to_remove.has(msg.id));
     }
 
     // Returns messages from the given message list in the specified range, inclusive
@@ -430,7 +447,7 @@ class MessageListData {
     }
 
     _add_to_hash(messages) {
-        messages.forEach((elem) => {
+        for (const elem of messages) {
             const id = Number.parseFloat(elem.id);
             if (Number.isNaN(id)) {
                 throw new TypeError("Bad message id");
@@ -440,10 +457,10 @@ class MessageListData {
             }
             if (this._hash.has(id)) {
                 blueslip.error("Duplicate message added to MessageListData");
-                return;
+                continue;
             }
             this._hash.set(id, elem);
-        });
+        }
     }
 
     _is_localonly_id(id) {
@@ -497,9 +514,7 @@ class MessageListData {
         ) {
             blueslip.debug("Changed message ID from server caused out-of-order list, reordering");
             this._items.sort(message_sort_func);
-            if (this.muting_enabled) {
-                this._all_items.sort(message_sort_func);
-            }
+            this._all_items.sort(message_sort_func);
             return true;
         }
 
@@ -515,7 +530,3 @@ class MessageListData {
         return msg;
     }
 }
-
-module.exports = MessageListData;
-
-window.MessageListData = MessageListData;

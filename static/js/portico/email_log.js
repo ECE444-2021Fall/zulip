@@ -1,4 +1,6 @@
-"use strict";
+import $ from "jquery";
+
+import * as channel from "../channel";
 
 $(() => {
     // This code will be executed when the user visits /emails in

@@ -1,4 +1,11 @@
-"use strict";
+import $ from "jquery";
+
+import * as blueslip from "./blueslip";
+import * as message_lists from "./message_lists";
+import * as narrow_state from "./narrow_state";
+import * as poll_widget from "./poll_widget";
+import * as todo_widget from "./todo_widget";
+import * as zform from "./zform";
 
 const widgets = new Map([
     ["poll", poll_widget],
@@ -6,15 +13,26 @@ const widgets = new Map([
     ["zform", zform],
 ]);
 
-const widget_contents = new Map();
-exports.widget_contents = widget_contents;
+export const widget_contents = new Map();
+
+export function clear_for_testing() {
+    widget_contents.clear();
+}
 
 function set_widget_in_message(row, widget_elem) {
     const content_holder = row.find(".message_content");
-    content_holder.empty().append(widget_elem);
+
+    // Avoid adding the widget_elem if it already exists.
+    // This can happen when the app loads in the "Recent topics"
+    // view and the user changes the view to "All messages".
+    // This is important since jQuery removes all the event handlers
+    // on `empty()`ing an element.
+    if (content_holder.find(".widget-content").length === 0) {
+        content_holder.empty().append(widget_elem);
+    }
 }
 
-exports.activate = function (in_opts) {
+export function activate(in_opts) {
     const widget_type = in_opts.widget_type;
     const extra_data = in_opts.extra_data;
     const events = in_opts.events;
@@ -71,18 +89,18 @@ exports.activate = function (in_opts) {
     if (events.length > 0) {
         widget_elem.handle_events(events);
     }
-};
+}
 
-exports.set_widgets_for_list = function () {
+export function set_widgets_for_list() {
     for (const [idx, widget_elem] of widget_contents) {
-        if (current_msg_list.get(idx) !== undefined) {
-            const row = current_msg_list.get_row(idx);
+        if (message_lists.current.get(idx) !== undefined) {
+            const row = message_lists.current.get_row(idx);
             set_widget_in_message(row, widget_elem);
         }
     }
-};
+}
 
-exports.handle_event = function (widget_event) {
+export function handle_event(widget_event) {
     const widget_elem = widget_contents.get(widget_event.message_id);
 
     if (!widget_elem) {
@@ -95,6 +113,4 @@ exports.handle_event = function (widget_event) {
     const events = [widget_event];
 
     widget_elem.handle_events(events);
-};
-
-window.widgetize = exports;
+}

@@ -1,7 +1,6 @@
 class zulip_ops::profile::nagios {
   include zulip_ops::profile::base
   include zulip_ops::apache
-  include zulip::nagios
 
   $nagios_packages = [# Packages needed for Nagios
                       'nagios3',
@@ -9,7 +8,6 @@ class zulip_ops::profile::nagios {
                       'msmtp',
                       ]
   package { $nagios_packages: ensure => 'installed' }
-  $nagios_format_users = join($zulip_ops::profile::base::users, ',')
   $nagios_alert_email = zulipconf('nagios', 'alert_email', undef)
   $nagios_test_email = zulipconf('nagios', 'test_email', undef)
   $nagios_pager_email = zulipconf('nagios', 'pager_email', undef)
@@ -17,7 +15,10 @@ class zulip_ops::profile::nagios {
   $nagios_mail_domain = zulipconf('nagios', 'mail_domain', undef)
   $nagios_mail_host = zulipconf('nagios', 'mail_host', undef)
   $nagios_mail_password = zulipsecret('secrets', 'nagios_mail_password', '')
-  $nagios_camo_check_url = zulipconf('nagios', 'camo_check_url', undef)
+  if zulipconf('nagios', 'camo_check_url', undef) =~ /^https:\/\/([^\/]*)(\/.*)$/ {
+    $nagios_camo_check_host = $1
+    $nagios_camo_check_path = $2
+  }
 
   $default_host_domain = zulipconf('nagios', 'default_host_domain', undef)
   $hosts_zmirror = split(zulipconf('nagios', 'hosts_zmirror', undef), ',')
@@ -27,9 +28,9 @@ class zulip_ops::profile::nagios {
   $hosts_postgresql_primary = split(zulipconf('nagios', 'hosts_postgresql_primary', undef), ',')
   $hosts_postgresql_replica = split(zulipconf('nagios', 'hosts_postgresql_replica', undef), ',')
   $hosts_redis = split(zulipconf('nagios', 'hosts_redis', undef), ',')
-  $hosts_loadbalancer = split(zulipconf('nagios', 'hosts_loadbalancer', undef), ',')
   $hosts_stats = split(zulipconf('nagios', 'hosts_stats', undef), ',')
   $hosts_fullstack = split(zulipconf('nagios', 'hosts_fullstack', undef), ',')
+  $hosts_smokescreen = split(zulipconf('nagios', 'hosts_smokescreen', undef), ',')
 
   file { '/etc/nagios3/':
     recurse => true,
@@ -57,6 +58,10 @@ class zulip_ops::profile::nagios {
       Apache2mod['headers'], Apache2mod['ssl'],
     ],
     notify  => Service['apache2'],
+  }
+  zulip_ops::teleport::application{ 'nagios':
+    description => 'Monitoring: nagios and munin',
+    port        => '3000',
   }
 
   file { '/etc/nagios3/conf.d/contacts.cfg':
@@ -97,7 +102,8 @@ class zulip_ops::profile::nagios {
     ensure => running,
   }
 
-  file { [ '/etc/nagios3/conf.d/extinfo_nagios2.cfg',
+  file { [
+    '/etc/nagios3/conf.d/extinfo_nagios2.cfg',
     '/etc/nagios3/conf.d/services_nagios2.cfg',
     '/etc/nagios3/conf.d/contacts_nagios2.cfg',
     '/etc/nagios3/conf.d/hostgroups_nagios2.cfg',

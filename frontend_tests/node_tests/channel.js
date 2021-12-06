@@ -4,32 +4,56 @@ const {strict: assert} = require("assert");
 
 const _ = require("lodash");
 
-const {set_global, zrequire} = require("../zjsunit/namespace");
+const {mock_jquery, mock_esm, set_global, zrequire} = require("../zjsunit/namespace");
 const {run_test} = require("../zjsunit/test");
+const blueslip = require("../zjsunit/zblueslip");
+const {page_params} = require("../zjsunit/zpage_params");
 
-set_global("$", {});
+set_global("setTimeout", (f, delay) => {
+    assert.equal(delay, 0);
+    f();
+});
 
-set_global("reload", {});
-zrequire("reload_state");
-zrequire("channel");
+const xhr_401 = {
+    status: 401,
+    responseText: '{"msg": "Use cannot access XYZ"}',
+};
 
-const default_stub_xhr = "default-stub-xhr";
+let login_to_access_shown = false;
+mock_esm("../../static/js/spectators", {
+    login_to_access: () => {
+        login_to_access_shown = true;
+    },
+});
+
+set_global("window", {
+    location: {
+        replace: () => {},
+    },
+});
+
+const reload_state = zrequire("reload_state");
+const channel = zrequire("channel");
+
+const default_stub_xhr = {"default-stub-xhr": 0};
+
+const $ = mock_jquery({});
 
 function test_with_mock_ajax(test_params) {
     const {xhr = default_stub_xhr, run_code, check_ajax_options} = test_params;
 
     let ajax_called;
     let ajax_options;
-    $.ajax = function (options) {
+    $.ajax = (options) => {
         $.ajax = undefined;
         ajax_called = true;
         ajax_options = options;
 
-        options.simulate_success = function (data, text_status) {
+        options.simulate_success = (data, text_status) => {
             options.success(data, text_status, xhr);
         };
 
-        options.simulate_error = function () {
+        options.simulate_error = () => {
             options.error(xhr);
         };
 
@@ -37,11 +61,18 @@ function test_with_mock_ajax(test_params) {
     };
 
     run_code();
-    assert(ajax_called);
+    assert.ok(ajax_called);
     check_ajax_options(ajax_options);
 }
 
-run_test("basics", () => {
+function test(label, f) {
+    run_test(label, ({override}) => {
+        reload_state.clear_for_testing();
+        f({override});
+    });
+}
+
+test("post", () => {
     test_with_mock_ajax({
         run_code() {
             channel.post({});
@@ -56,7 +87,9 @@ run_test("basics", () => {
             options.simulate_error();
         },
     });
+});
 
+test("patch", () => {
     test_with_mock_ajax({
         run_code() {
             channel.patch({});
@@ -72,7 +105,9 @@ run_test("basics", () => {
             options.simulate_error();
         },
     });
+});
 
+test("put", () => {
     test_with_mock_ajax({
         run_code() {
             channel.put({});
@@ -87,7 +122,9 @@ run_test("basics", () => {
             options.simulate_error();
         },
     });
+});
 
+test("delete", () => {
     test_with_mock_ajax({
         run_code() {
             channel.del({});
@@ -102,7 +139,9 @@ run_test("basics", () => {
             options.simulate_error();
         },
     });
+});
 
+test("get", () => {
     test_with_mock_ajax({
         run_code() {
             channel.get({});
@@ -119,7 +158,7 @@ run_test("basics", () => {
     });
 });
 
-run_test("normal_post", () => {
+test("normal_post", () => {
     const data = {
         s: "some_string",
         num: 7,
@@ -128,7 +167,7 @@ run_test("normal_post", () => {
 
     let orig_success_called;
     let orig_error_called;
-    const stub_xhr = "stub-xhr-normal-post";
+    const stub_xhr = {"stub-xhr-normal-post": 0};
 
     test_with_mock_ajax({
         xhr: stub_xhr,
@@ -156,15 +195,15 @@ run_test("normal_post", () => {
             assert.equal(options.url, "/json/endpoint");
 
             options.simulate_success("response data", "success");
-            assert(orig_success_called);
+            assert.ok(orig_success_called);
 
             options.simulate_error();
-            assert(orig_error_called);
+            assert.ok(orig_error_called);
         },
     });
 });
 
-run_test("patch_with_form_data", () => {
+test("patch_with_form_data", () => {
     let appended;
 
     const data = {
@@ -181,7 +220,7 @@ run_test("patch_with_form_data", () => {
                 data,
                 processData: false,
             });
-            assert(appended);
+            assert.ok(appended);
         },
 
         check_ajax_options(options) {
@@ -195,7 +234,68 @@ run_test("patch_with_form_data", () => {
     });
 });
 
-run_test("reload_on_403_error", () => {
+test("authentication_error_401_is_spectator", () => {
+    test_with_mock_ajax({
+        xhr: xhr_401,
+        run_code() {
+            channel.post({});
+        },
+
+        // is_spectator = true
+        check_ajax_options(options) {
+            page_params.is_spectator = true;
+
+            options.simulate_error();
+            assert.ok(login_to_access_shown);
+
+            login_to_access_shown = false;
+        },
+    });
+});
+
+test("authentication_error_401_password_change_in_progress", () => {
+    test_with_mock_ajax({
+        xhr: xhr_401,
+        run_code() {
+            channel.post({});
+        },
+
+        // is_spectator = true
+        // password_change_in_progress = true
+        check_ajax_options(options) {
+            page_params.is_spectator = true;
+            channel.set_password_change_in_progress(true);
+
+            options.simulate_error();
+            assert.ok(!login_to_access_shown);
+
+            channel.set_password_change_in_progress(false);
+            page_params.is_spectator = false;
+            login_to_access_shown = false;
+        },
+    });
+});
+
+test("authentication_error_401_not_spectator", () => {
+    test_with_mock_ajax({
+        xhr: xhr_401,
+        run_code() {
+            channel.post({});
+        },
+
+        // is_spectator = false
+        check_ajax_options(options) {
+            page_params.is_spectator = false;
+
+            options.simulate_error();
+            assert.ok(!login_to_access_shown);
+
+            login_to_access_shown = false;
+        },
+    });
+});
+
+test("reload_on_403_error", () => {
     test_with_mock_ajax({
         xhr: {
             status: 403,
@@ -207,24 +307,18 @@ run_test("reload_on_403_error", () => {
         },
 
         check_ajax_options(options) {
-            let reload_initiated;
-            reload.initiate = function (options) {
-                reload_initiated = true;
-                assert.deepEqual(options, {
-                    immediate: true,
-                    save_pointer: true,
-                    save_narrow: true,
-                    save_compose: true,
-                });
-            };
+            let handler_called = false;
+            reload_state.set_csrf_failed_handler(() => {
+                handler_called = true;
+            });
 
             options.simulate_error();
-            assert(reload_initiated);
+            assert.ok(handler_called);
         },
     });
 });
 
-run_test("unexpected_403_response", () => {
+test("unexpected_403_response", () => {
     test_with_mock_ajax({
         xhr: {
             status: 403,
@@ -242,7 +336,7 @@ run_test("unexpected_403_response", () => {
     });
 });
 
-run_test("retry", () => {
+test("retry", () => {
     test_with_mock_ajax({
         run_code() {
             channel.post({
@@ -252,11 +346,6 @@ run_test("retry", () => {
         },
 
         check_ajax_options(options) {
-            set_global("setTimeout", (f, delay) => {
-                assert.equal(delay, 0);
-                f();
-            });
-
             blueslip.expect("log", "Retrying idempotent[object Object]");
             test_with_mock_ajax({
                 run_code() {
@@ -271,9 +360,10 @@ run_test("retry", () => {
     });
 });
 
-run_test("too_many_pending", () => {
-    $.ajax = function () {
-        const xhr = "stub";
+test("too_many_pending", () => {
+    channel.clear_for_tests();
+    $.ajax = () => {
+        const xhr = {stub: 0};
         return xhr;
     };
 
@@ -282,12 +372,13 @@ run_test("too_many_pending", () => {
         "The length of pending_requests is over 50. " +
             "Most likely they are not being correctly removed.",
     );
-    _.times(50, () => {
+    _.times(51, () => {
         channel.post({});
     });
+    channel.clear_for_tests();
 });
 
-run_test("xhr_error_message", () => {
+test("xhr_error_message", () => {
     let xhr = {
         status: "200",
         responseText: "does not matter",
@@ -301,4 +392,38 @@ run_test("xhr_error_message", () => {
     };
     msg = "some message";
     assert.equal(channel.xhr_error_message(msg, xhr), "some message: file not found");
+});
+
+test("while_reloading", () => {
+    reload_state.set_state_to_in_progress();
+
+    assert.equal(channel.get({ignore_reload: false}), undefined);
+
+    let orig_success_called = false;
+    let orig_error_called = false;
+
+    test_with_mock_ajax({
+        run_code() {
+            channel.del({
+                url: "/json/endpoint",
+                ignore_reload: true,
+                success() {
+                    orig_success_called = true;
+                },
+                error() {
+                    orig_error_called = true;
+                },
+            });
+        },
+
+        check_ajax_options(options) {
+            blueslip.expect("log", "Ignoring DELETE /json/endpoint response while reloading");
+            options.simulate_success();
+            assert.ok(!orig_success_called);
+
+            blueslip.expect("log", "Ignoring DELETE /json/endpoint error response while reloading");
+            options.simulate_error();
+            assert.ok(!orig_error_called);
+        },
+    });
 });

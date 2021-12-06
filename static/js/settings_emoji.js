@@ -1,29 +1,29 @@
-"use strict";
+import $ from "jquery";
 
-const emoji = require("../shared/js/emoji");
-const render_admin_emoji_list = require("../templates/admin_emoji_list.hbs");
-const render_settings_emoji_settings_tip = require("../templates/settings/emoji_settings_tip.hbs");
+import emoji_codes from "../generated/emoji/emoji_codes.json";
+import * as emoji from "../shared/js/emoji";
+import emoji_settings_warning_modal from "../templates/confirm_dialog/confirm_emoji_settings_warning.hbs";
+import render_admin_emoji_list from "../templates/settings/admin_emoji_list.hbs";
+import render_settings_emoji_settings_tip from "../templates/settings/emoji_settings_tip.hbs";
 
-const people = require("./people");
+import * as channel from "./channel";
+import * as confirm_dialog from "./confirm_dialog";
+import {$t_html} from "./i18n";
+import * as ListWidget from "./list_widget";
+import * as loading from "./loading";
+import {page_params} from "./page_params";
+import * as people from "./people";
+import * as settings_config from "./settings_config";
+import * as settings_data from "./settings_data";
+import * as ui from "./ui";
+import * as ui_report from "./ui_report";
+import * as upload_widget from "./upload_widget";
 
 const meta = {
     loaded: false,
 };
 
-exports.can_add_emoji = function () {
-    if (page_params.is_guest) {
-        return false;
-    }
-
-    if (page_params.is_admin) {
-        return true;
-    }
-
-    // for normal users, we depend on the setting
-    return !page_params.realm_add_emoji_by_admins_only;
-};
-
-function can_admin_emoji(emoji) {
+function can_delete_emoji(emoji) {
     if (page_params.is_admin) {
         return true;
     }
@@ -31,18 +31,19 @@ function can_admin_emoji(emoji) {
         // If we don't have the author information then only admin is allowed to disable that emoji.
         return false;
     }
-    if (!page_params.realm_add_emoji_by_admins_only && people.is_my_user_id(emoji.author_id)) {
+    if (people.is_my_user_id(emoji.author_id)) {
         return true;
     }
     return false;
 }
 
-exports.update_custom_emoji_ui = function () {
+export function update_custom_emoji_ui() {
     const rendered_tip = render_settings_emoji_settings_tip({
-        realm_add_emoji_by_admins_only: page_params.realm_add_emoji_by_admins_only,
+        realm_add_custom_emoji_policy: page_params.realm_add_custom_emoji_policy,
+        policy_values: settings_config.common_policy_values,
     });
     $("#emoji-settings").find(".emoji-settings-tip-container").html(rendered_tip);
-    if (page_params.realm_add_emoji_by_admins_only && !page_params.is_admin) {
+    if (!settings_data.user_can_add_custom_emoji()) {
         $(".add-emoji-text").hide();
         $(".admin-emoji-form").hide();
     } else {
@@ -50,12 +51,12 @@ exports.update_custom_emoji_ui = function () {
         $(".admin-emoji-form").show();
     }
 
-    exports.populate_emoji();
-};
+    populate_emoji();
+}
 
-exports.reset = function () {
+export function reset() {
     meta.loaded = false;
-};
+}
 
 function sort_author_full_name(a, b) {
     if (a.author.full_name > b.author.full_name) {
@@ -66,7 +67,21 @@ function sort_author_full_name(a, b) {
     return -1;
 }
 
-exports.populate_emoji = function () {
+function is_default_emoji(emoji_name) {
+    return emoji_codes.names.includes(emoji_name);
+}
+
+function is_custom_emoji(emoji_name) {
+    const emoji_data = emoji.get_server_realm_emoji_data();
+    for (const emoji of Object.values(emoji_data)) {
+        if (emoji.name === emoji_name && !emoji.deactivated) {
+            return true;
+        }
+    }
+    return false;
+}
+
+export function populate_emoji() {
     if (!meta.loaded) {
         return;
     }
@@ -83,7 +98,7 @@ exports.populate_emoji = function () {
     }
 
     const emoji_table = $("#admin_emoji_table").expectOne();
-    list_render.create(emoji_table, Object.values(emoji_data), {
+    ListWidget.create(emoji_table, Object.values(emoji_data), {
         name: "emoji_list",
         modifier(item) {
             if (item.deactivated !== true) {
@@ -93,7 +108,7 @@ exports.populate_emoji = function () {
                         display_name: item.name.replace(/_/g, " "),
                         source_url: item.source_url,
                         author: item.author || "",
-                        can_admin_emoji: can_admin_emoji(item),
+                        can_delete_emoji: can_delete_emoji(item),
                     },
                 });
             }
@@ -117,9 +132,9 @@ exports.populate_emoji = function () {
     });
 
     loading.destroy_indicator($("#admin_page_emoji_loading_indicator"));
-};
+}
 
-exports.build_emoji_upload_widget = function () {
+export function build_emoji_upload_widget() {
     const get_file_input = function () {
         return $("#emoji_file_input");
     };
@@ -140,15 +155,15 @@ exports.build_emoji_upload_widget = function () {
         preview_text,
         preview_image,
     );
-};
+}
 
-exports.set_up = function () {
+export function set_up() {
     meta.loaded = true;
 
     loading.make_indicator($("#admin_page_emoji_loading_indicator"));
 
     // Populate emoji table
-    exports.populate_emoji();
+    populate_emoji();
 
     $(".admin_emoji_table").on("click", ".delete", function (e) {
         e.preventDefault();
@@ -167,7 +182,7 @@ exports.set_up = function () {
         });
     });
 
-    const emoji_widget = exports.build_emoji_upload_widget();
+    const emoji_widget = build_emoji_upload_widget();
 
     $(".organization form.admin-emoji-form")
         .off("submit")
@@ -175,39 +190,77 @@ exports.set_up = function () {
             e.preventDefault();
             e.stopPropagation();
             const emoji_status = $("#admin-emoji-status");
-            $("#admin_emoji_submit").prop("disabled", true);
             const emoji = {};
-            const formData = new FormData();
+
+            function submit_custom_emoji_request() {
+                $("#admin_emoji_submit").prop("disabled", true);
+                const formData = new FormData();
+                for (const [i, file] of Array.prototype.entries.call(
+                    $("#emoji_file_input")[0].files,
+                )) {
+                    formData.append("file-" + i, file);
+                }
+
+                channel.post({
+                    url: "/json/realm/emoji/" + encodeURIComponent(emoji.name),
+                    data: formData,
+                    cache: false,
+                    processData: false,
+                    contentType: false,
+                    success() {
+                        $("#admin-emoji-status").hide();
+                        ui_report.success(
+                            $t_html({defaultMessage: "Custom emoji added!"}),
+                            emoji_status,
+                        );
+                        $("form.admin-emoji-form input[type='text']").val("");
+                        $("#admin_emoji_submit").prop("disabled", false);
+                        emoji_widget.clear();
+                    },
+                    error(xhr) {
+                        $("#admin-emoji-status").hide();
+                        const errors = JSON.parse(xhr.responseText).msg;
+                        xhr.responseText = JSON.stringify({msg: errors});
+                        ui_report.error($t_html({defaultMessage: "Failed"}), xhr, emoji_status);
+                        $("#admin_emoji_submit").prop("disabled", false);
+                    },
+                });
+            }
 
             for (const obj of $(this).serializeArray()) {
                 emoji[obj.name] = obj.value;
             }
 
-            for (const [i, file] of Array.prototype.entries.call($("#emoji_file_input")[0].files)) {
-                formData.append("file-" + i, file);
+            if (emoji.name.trim() === "") {
+                ui_report.client_error(
+                    $t_html({defaultMessage: "Failed: Emoji name is required."}),
+                    emoji_status,
+                );
+                return;
             }
-            channel.post({
-                url: "/json/realm/emoji/" + encodeURIComponent(emoji.name),
-                data: formData,
-                cache: false,
-                processData: false,
-                contentType: false,
-                success() {
-                    $("#admin-emoji-status").hide();
-                    ui_report.success(i18n.t("Custom emoji added!"), emoji_status);
-                    $("form.admin-emoji-form input[type='text']").val("");
-                    $("#admin_emoji_submit").prop("disabled", false);
-                    emoji_widget.clear();
-                },
-                error(xhr) {
-                    $("#admin-emoji-status").hide();
-                    const errors = JSON.parse(xhr.responseText).msg;
-                    xhr.responseText = JSON.stringify({msg: errors});
-                    ui_report.error(i18n.t("Failed"), xhr, emoji_status);
-                    $("#admin_emoji_submit").prop("disabled", false);
-                },
-            });
-        });
-};
 
-window.settings_emoji = exports;
+            if (is_custom_emoji(emoji.name)) {
+                ui_report.client_error(
+                    $t_html({
+                        defaultMessage: "Failed: A custom emoji with this name already exists.",
+                    }),
+                    emoji_status,
+                );
+                return;
+            }
+
+            if (is_default_emoji(emoji.name)) {
+                const html_body = emoji_settings_warning_modal({
+                    emoji_name: emoji.name,
+                });
+
+                confirm_dialog.launch({
+                    html_heading: $t_html({defaultMessage: "Override built-in emoji?"}),
+                    html_body,
+                    on_click: submit_custom_emoji_request,
+                });
+            } else {
+                submit_custom_emoji_request();
+            }
+        });
+}

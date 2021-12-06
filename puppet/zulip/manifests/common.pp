@@ -9,7 +9,10 @@ class zulip::common {
       $supervisor_conf_file = '/etc/supervisor/supervisord.conf'
       $supervisor_service = 'supervisor'
       $supervisor_start = '/etc/init.d/supervisor start'
-      $supervisor_reload = '/etc/init.d/supervisor restart'
+      # https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=877086
+      # "restart" is actually "stop" under sysvinit
+      $supervisor_reload = '/etc/init.d/supervisor restart && (/etc/init.d/supervisor start || /bin/true) && /etc/init.d/supervisor status'
+      $supervisor_status = '/etc/init.d/supervisor status'
     }
     'redhat': {
       $nagios_plugins = 'nagios-plugins'
@@ -20,6 +23,7 @@ class zulip::common {
       $supervisor_service = 'supervisord'
       $supervisor_start = 'systemctl start supervisord'
       $supervisor_reload = 'systemctl reload supervisord'
+      $supervisor_status = 'systemctl status supervisord'
     }
     default: {
       fail('osfamily not supported')

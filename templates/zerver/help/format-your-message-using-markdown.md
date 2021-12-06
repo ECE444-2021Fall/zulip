@@ -1,7 +1,7 @@
 # Format your messages
 
 [//]: # (All screenshots here require line-height: 22px and font-size: 16px in .message-content.)
-[//]: # (Requires some additional fiddling for the LaTeX picture, inline code block, and maybe a few others.)
+[//]: # (Requires some additional fiddling for the LaTeX picture, inline code span, and maybe a few others.)
 
 Zulip uses a variant of
 [GitHub Flavored Markdown](https://github.com/adam-p/markdown-here/wiki/Markdown-Cheatsheet)
@@ -17,8 +17,9 @@ to allow you to easily format your messages.
 * [Emoji and emoticons](#emoji-and-emoticons)
 * [Mentions](#mentions)
 * [Status messages](#status-messages)
-* [Mention a time](#mention-a-time)
+* [Global times](#global-times)
 * [Tables](#tables)
+* [To-do lists](#to-do-lists)
 * [Paragraphs and lines](#paragraphs-and-lines)
 
 ## Emphasis
@@ -62,7 +63,7 @@ Numbered lists
 ## Links
 
 Zulip auto-linkifies URLs and valid stream names. You can also add a
-[custom linkifier](/help/add-a-custom-linkification-filter) to link
+[custom linkifier](/help/add-a-custom-linkifier) to link
 patterns like `#1234` to your ticketing system.
 
 ```
@@ -107,16 +108,11 @@ def fib(n):
 
 ![Markdown code](/static/images/help/markdown-code.png)
 
-You can also use `~~~` to start codeblocks, or just indent the code 4 or more spaces.
+You can also use `~~~` to start code blocks, or just indent the code 4 or more spaces.
 
-Zulip supports syntax highlighting for hundreds of languages, and a
-typeahead will pop up when you start typing after the ` ``` `. If you can't
-find your language, search for it [here](https://pygments.org/docs/lexers/)
-and try the **short names** listed for the lexers for your language.
-
-Organization administrators can also configure a default syntax
-highlighting language.  In this configuration, one can use ````text`
-to display content without any syntax highlighting.
+See the main [code blocks article](/help/code-blocks) for details on
+[syntax highlighting](/help/code-blocks#language-tagging), [code
+playgrounds](/help/code-blocks#code-playgrounds), and other features.
 
 ## LaTeX
 ~~~
@@ -161,7 +157,7 @@ the user interacts with it.
 ~~~
 Normal content in message
 
-```spoiler Spoiler Header
+```spoiler Spoiler header
 Spoiler content. These lines won't be visible until the user expands the spoiler.
 ```
 ~~~
@@ -178,7 +174,7 @@ Clicking the arrow will expand the spoiler content:
 
 To translate emoticons into emoji, you'll need to
 [enable emoticon translations](/help/enable-emoticon-translations).
-You can also [add custom emoji](/help/add-custom-emoji).
+You can also [add custom emoji](/help/custom-emoji).
 
 ```
 :octopus: :heart: :zulip: :)
@@ -189,17 +185,20 @@ You can also [add custom emoji](/help/add-custom-emoji).
 ## Mentions
 
 Learn more about mentions [here](/help/mention-a-user-or-group).
-The numbers will be added automatically by the typeahead if needed for disambiguation.
 
 ```
-Users: @**Polonius** or @**Zoe|2132** (two asterisks)
+Users: @**Polonius** or @**aaron|26** or @**|26** (two asterisks)
 User group: @*support team* (one asterisk)
-Silent mention: @_**Polonius** (@_ instead of @)
+Silent mention: @_**Polonius** or @_**|26** (@_ instead of @)
 ```
+
+The variants with numbers use user IDs, and are intended for
+disambiguation (if multiple users have the same name) and bots (for
+the variant that only contains the user ID).
 
 ![Markdown mentions](/static/images/help/markdown-mentions.png)
 
-## Status Messages
+## Status messages
 
 ```
 /me is away
@@ -207,7 +206,7 @@ Silent mention: @_**Polonius** (@_ instead of @)
 
 ![Markdown status](/static/images/help/markdown-status.png)
 
-## Mention a time
+## Global times
 
 When collaborating with people in another timezone, you often need to
 express a specific time clearly. Rather than typing out your timezone
@@ -247,6 +246,19 @@ The header separators (`---`) must be at least three dashes long.
 
 ![Markdown table](/static/images/help/markdown-table.png)
 
+## To-do lists
+
+Sending a message with the text `/todo` creates a simple collaborative
+to-do list. Any user who can access the message can add tasks by
+entering the task's title and description and clicking "Add task". Once
+created, task titles and descriptions cannot be edited.
+
+Tasks can be marked (and unmarked) as completed by clicking the
+checkboxes on the left.
+
+![Markdown todo-lists](/static/images/help/markdown-todo.png)
+
+
 ## Paragraphs and lines
 
 ```
@@ -273,10 +285,11 @@ A summary of the formatting syntax is available in-app.
 
 {!start-composing.md!}
 
-1. Click the A (<i class="fa fa-font"></i>) icon at the bottom of the compose box.
+1. Click help at the bottom of the compose box.
 
 {end_tabs}
 
 ## Related articles
 
 * [Create a poll](/help/create-a-poll)
+* [Messaging tips & tricks](/help/messaging-tips)

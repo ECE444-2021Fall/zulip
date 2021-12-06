@@ -1,13 +1,20 @@
-"use strict";
+import ClipboardJS from "clipboard";
+import {isValid, parseISO} from "date-fns";
+import $ from "jquery";
 
-const ClipboardJS = require("clipboard");
-const moment = require("moment");
+import copy_code_button from "../templates/copy_code_button.hbs";
+import render_markdown_timestamp from "../templates/markdown_timestamp.hbs";
+import view_code_in_playground from "../templates/view_code_in_playground.hbs";
 
-const copy_code_button = require("../templates/copy_code_button.hbs");
-const view_code_in_playground = require("../templates/view_code_in_playground.hbs");
-
-const people = require("./people");
-const settings_config = require("./settings_config");
+import * as blueslip from "./blueslip";
+import {$t, $t_html} from "./i18n";
+import * as people from "./people";
+import * as realm_playground from "./realm_playground";
+import * as rtl from "./rtl";
+import * as stream_data from "./stream_data";
+import * as timerender from "./timerender";
+import * as user_groups from "./user_groups";
+import {user_settings} from "./user_settings";
 
 /*
     rendered_markdown
@@ -55,15 +62,15 @@ function get_user_group_id_for_mention_button(elem) {
 }
 
 // Helper function to update a mentioned user's name.
-exports.set_name_in_mention_element = function (element, name) {
+export function set_name_in_mention_element(element, name) {
     if ($(element).hasClass("silent")) {
         $(element).text(name);
     } else {
         $(element).text("@" + name);
     }
-};
+}
 
-exports.update_elements = (content) => {
+export const update_elements = (content) => {
     // Set the rtl class if the text has an rtl direction
     if (rtl.get_direction(content.text()) === "rtl") {
         content.addClass("rtl");
@@ -86,15 +93,17 @@ exports.update_elements = (content) => {
             if (person !== undefined) {
                 // Note that person might be undefined in some
                 // unpleasant corner cases involving data import.
-                exports.set_name_in_mention_element(this, person.full_name);
+                set_name_in_mention_element(this, person.full_name);
             }
         }
     });
 
     content.find(".user-group-mention").each(function () {
         const user_group_id = get_user_group_id_for_mention_button(this);
-        const user_group = user_groups.get_user_group_from_id(user_group_id, true);
-        if (user_group === undefined) {
+        let user_group;
+        try {
+            user_group = user_groups.get_user_group_from_id(user_group_id);
+        } catch {
             // This is a user group the current user doesn't have
             // data on.  This can happen when user groups are
             // deleted.
@@ -111,7 +120,7 @@ exports.update_elements = (content) => {
         if (user_group_id && !$(this).find(".highlight").length) {
             // Edit the mention to show the current name for the
             // user group, if its not in search.
-            $(this).text("@" + user_group.name);
+            set_name_in_mention_element(this, user_group.name);
         }
     });
 
@@ -135,14 +144,13 @@ exports.update_elements = (content) => {
         if (stream_id && !$(this).find(".highlight").length) {
             // Display the current name for stream if it is not
             // being displayed in search highlight.
-            const text = $(this).text();
-            const topic = text.split(">", 2)[1];
             const stream_name = stream_data.maybe_get_stream_name(stream_id);
             if (stream_name !== undefined) {
                 // If the stream has been deleted,
                 // stream_data.maybe_get_stream_name might return
                 // undefined.  Otherwise, display the current stream name.
-                $(this).text("#" + stream_name + " > " + topic);
+                const text = $(this).text();
+                $(this).text("#" + stream_name + text.slice(text.indexOf(" > ")));
             }
         }
     });
@@ -155,26 +163,27 @@ exports.update_elements = (content) => {
             return;
         }
 
-        // Moment throws a large deprecation warning when it has to
-        // fallback to the Date() constructor.  This isn't really a
-        // problem for us except in local echo, as the backend always
-        // uses a format that ensures that is unnecessary.
-        moment.suppressDeprecationWarnings = true;
-        const timestamp = moment(time_str);
-        if (timestamp.isValid()) {
+        const timestamp = parseISO(time_str);
+        if (isValid(timestamp)) {
             const text = $(this).text();
             const rendered_time = timerender.render_markdown_timestamp(timestamp, text);
-            $(this).text(rendered_time.text);
-            $(this).attr("title", rendered_time.title);
+            const rendered_timestamp = render_markdown_timestamp({
+                text: rendered_time.text,
+            });
+            $(this).html(rendered_timestamp);
+            $(this).attr("data-tippy-content", rendered_time.tooltip_content);
         } else {
             // This shouldn't happen. If it does, we're very interested in debugging it.
-            blueslip.error(`Moment could not parse datetime supplied by backend: ${time_str}`);
+            blueslip.error(`Could not parse datetime supplied by backend: ${time_str}`);
         }
     });
 
     content.find("span.timestamp-error").each(function () {
         const time_str = $(this).text().replace("Invalid time format: ", "");
-        const text = i18n.t("Invalid time format: __timestamp__", {timestamp: time_str});
+        const text = $t(
+            {defaultMessage: "Invalid time format: {timestamp}"},
+            {timestamp: time_str},
+        );
         $(this).text(text);
     });
 
@@ -182,7 +191,7 @@ exports.update_elements = (content) => {
         // If a spoiler block has no header content, it should have a default header.
         // We do this client side to allow for i18n by the client.
         if ($(this).html().trim().length === 0) {
-            $(this).append(`<p>${i18n.t("Spoiler")}</p>`);
+            $(this).append(`<p>${$t_html({defaultMessage: "Spoiler"})}</p>`);
         }
 
         // Add the expand/collapse button to spoiler blocks
@@ -197,23 +206,25 @@ exports.update_elements = (content) => {
         const $pre = $codehilite.find("pre");
         const fenced_code_lang = $codehilite.data("code-language");
         if (fenced_code_lang !== undefined) {
-            const playground_info = settings_config.get_playground_info_for_languages(
-                fenced_code_lang,
-            );
+            const playground_info =
+                realm_playground.get_playground_info_for_languages(fenced_code_lang);
             if (playground_info !== undefined) {
                 // If a playground is configured for this language,
                 // offer to view the code in that playground.  When
                 // there are multiple playgrounds, we display a
                 // popover listing the options.
-                let title = i18n.t("View in playground");
+                let title = $t({defaultMessage: "View in playground"});
                 const view_in_playground_button = $(view_code_in_playground());
                 $pre.prepend(view_in_playground_button);
                 if (playground_info.length === 1) {
-                    title = i18n.t(`View in ${playground_info[0].name}`);
+                    title = $t(
+                        {defaultMessage: "View in {playground_name}"},
+                        {playground_name: playground_info[0].name},
+                    );
                 } else {
                     view_in_playground_button.attr("aria-haspopup", "true");
                 }
-                view_in_playground_button.attr("title", title);
+                view_in_playground_button.attr("data-tippy-content", title);
                 view_in_playground_button.attr("aria-label", title);
             }
         }
@@ -227,8 +238,8 @@ exports.update_elements = (content) => {
     });
 
     // Display emoji (including realm emoji) as text if
-    // page_params.emojiset is 'text'.
-    if (page_params.emojiset === "text") {
+    // user_settings.emojiset is 'text'.
+    if (user_settings.emojiset === "text") {
         content.find(".emoji").replaceWith(function () {
             const text = $(this).attr("title");
             return ":" + text + ":";

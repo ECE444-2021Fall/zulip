@@ -1,8 +1,8 @@
-"use strict";
-
-const XDate = require("xdate");
-
-const people = require("./people");
+import * as blueslip from "./blueslip";
+import * as people from "./people";
+import * as reload_state from "./reload_state";
+import {user_settings} from "./user_settings";
+import * as watchdog from "./watchdog";
 
 // This module just manages data.  See activity.js for
 // the UI of our buddy list.
@@ -14,7 +14,13 @@ const people = require("./people");
 // In future commits we'll use raw_info to facilitate
 // handling server events and/or timeout events.
 const raw_info = new Map();
-exports.presence_info = new Map();
+export const presence_info = new Map();
+
+// We use this internally and export it for testing convenience.
+export function clear_internal_data() {
+    raw_info.clear();
+    presence_info.clear();
+}
 
 /* Mark users as offline after 140 seconds since their last checkin,
  * Keep in sync with zerver/tornado/event_queue.py:receiver_is_idle
@@ -23,31 +29,36 @@ const OFFLINE_THRESHOLD_SECS = 140;
 
 const BIG_REALM_COUNT = 250;
 
-exports.is_active = function (user_id) {
-    if (exports.presence_info.has(user_id)) {
-        const status = exports.presence_info.get(user_id).status;
+export function is_active(user_id) {
+    if (presence_info.has(user_id)) {
+        const status = presence_info.get(user_id).status;
         if (status === "active") {
             return true;
         }
     }
     return false;
-};
+}
 
-exports.get_status = function (user_id) {
+export function get_status(user_id) {
     if (people.is_my_user_id(user_id)) {
-        return "active";
+        if (user_settings.presence_enabled) {
+            // if the current user is sharing presence, they always see themselves as online.
+            return "active";
+        }
+        // if the current user is not sharing presence, they always see themselves as offline.
+        return "offline";
     }
-    if (exports.presence_info.has(user_id)) {
-        return exports.presence_info.get(user_id).status;
+    if (presence_info.has(user_id)) {
+        return presence_info.get(user_id).status;
     }
     return "offline";
-};
+}
 
-exports.get_user_ids = function () {
-    return Array.from(exports.presence_info.keys());
-};
+export function get_user_ids() {
+    return Array.from(presence_info.keys());
+}
 
-exports.status_from_raw = function (raw) {
+export function status_from_raw(raw) {
     /*
         Example of `raw`:
 
@@ -96,9 +107,9 @@ exports.status_from_raw = function (raw) {
         status: "offline",
         last_active,
     };
-};
+}
 
-exports.update_info_from_event = function (user_id, info, server_timestamp) {
+export function update_info_from_event(user_id, info, server_timestamp) {
     /*
         Example of `info`:
 
@@ -124,26 +135,22 @@ exports.update_info_from_event = function (user_id, info, server_timestamp) {
     raw.server_timestamp = server_timestamp;
 
     for (const rec of Object.values(info)) {
-        if (rec.status === "active") {
-            if (rec.timestamp > (raw.active_timestamp || 0)) {
-                raw.active_timestamp = rec.timestamp;
-            }
+        if (rec.status === "active" && rec.timestamp > (raw.active_timestamp || 0)) {
+            raw.active_timestamp = rec.timestamp;
         }
 
-        if (rec.status === "idle") {
-            if (rec.timestamp > (raw.idle_timestamp || 0)) {
-                raw.idle_timestamp = rec.timestamp;
-            }
+        if (rec.status === "idle" && rec.timestamp > (raw.idle_timestamp || 0)) {
+            raw.idle_timestamp = rec.timestamp;
         }
     }
 
     raw_info.set(user_id, raw);
 
-    const status = exports.status_from_raw(raw);
-    exports.presence_info.set(user_id, status);
-};
+    const status = status_from_raw(raw);
+    presence_info.set(user_id, status);
+}
 
-exports.set_info = function (presences, server_timestamp) {
+export function set_info(presences, server_timestamp) {
     /*
         Example `presences` data:
 
@@ -154,8 +161,7 @@ exports.set_info = function (presences, server_timestamp) {
         }
     */
 
-    raw_info.clear();
-    exports.presence_info.clear();
+    clear_internal_data();
     for (const [user_id_str, info] of Object.entries(presences)) {
         const user_id = Number.parseInt(user_id_str, 10);
 
@@ -181,7 +187,7 @@ exports.set_info = function (presences, server_timestamp) {
         // system are common in both situations.
         const person = people.get_by_user_id(user_id, true);
         if (person === undefined) {
-            if (!(server_events.suspect_offline || reload_state.is_in_progress())) {
+            if (!(watchdog.suspects_user_is_offline() || reload_state.is_in_progress())) {
                 // If we're online, and we get a user who we don't
                 // know about in the presence data, throw an error.
                 blueslip.error("Unknown user ID in presence data: " + user_id);
@@ -199,13 +205,13 @@ exports.set_info = function (presences, server_timestamp) {
 
         raw_info.set(user_id, raw);
 
-        const status = exports.status_from_raw(raw);
-        exports.presence_info.set(user_id, status);
+        const status = status_from_raw(raw);
+        presence_info.set(user_id, status);
     }
-    exports.update_info_for_small_realm();
-};
+    update_info_for_small_realm();
+}
 
-exports.update_info_for_small_realm = function () {
+export function update_info_for_small_realm() {
     if (people.get_active_human_count() >= BIG_REALM_COUNT) {
         // For big realms, we don't want to bloat our buddy
         // lists with lots of long-time-inactive users.
@@ -220,7 +226,7 @@ exports.update_info_for_small_realm = function () {
         const user_id = person.user_id;
         let status = "offline";
 
-        if (exports.presence_info.has(user_id)) {
+        if (presence_info.has(user_id)) {
             // this is normal, we have data for active
             // users that we don't want to clobber.
             continue;
@@ -235,26 +241,23 @@ exports.update_info_for_small_realm = function () {
             status = "active";
         }
 
-        exports.presence_info.set(user_id, {
+        presence_info.set(user_id, {
             status,
             last_active: undefined,
         });
     }
-};
+}
 
-exports.last_active_date = function (user_id) {
-    const info = exports.presence_info.get(user_id);
+export function last_active_date(user_id) {
+    const info = presence_info.get(user_id);
 
     if (!info || !info.last_active) {
         return undefined;
     }
 
-    const date = new XDate(info.last_active * 1000);
-    return date;
-};
+    return new Date(info.last_active * 1000);
+}
 
-exports.initialize = function (params) {
-    exports.set_info(params.presences, params.initial_servertime);
-};
-
-window.presence = exports;
+export function initialize(params) {
+    set_info(params.presences, params.server_timestamp);
+}

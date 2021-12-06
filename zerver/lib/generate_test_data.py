@@ -6,6 +6,7 @@ from typing import Any, Dict, List
 import orjson
 
 from scripts.lib.zulip_tools import get_or_create_dev_uuid_var_path
+from zerver.lib.topic import RESOLVED_TOPIC_PREFIX
 
 
 def load_config() -> Dict[str, Any]:
@@ -13,6 +14,7 @@ def load_config() -> Dict[str, Any]:
         config = orjson.loads(infile.read())
 
     return config
+
 
 def generate_topics(num_topics: int) -> List[str]:
     config = load_config()["gen_fodder"]
@@ -35,7 +37,24 @@ def generate_topics(num_topics: int) -> List[str]:
         topic = " ".join(filter(None, generated_topic))
         topics.append(topic)
 
-    return topics
+    # Mark a small subset of topics as resolved in some streams, and
+    # many topics in a few streams. Note that these don't have the
+    # "Marked as resolved" messages, so don't match the normal user
+    # experience perfectly.
+    if random.random() < 0.15:
+        resolved_topic_probability = 0.5
+    else:
+        resolved_topic_probability = 0.05
+
+    final_topics = []
+    for topic in topics:
+        if random.random() < resolved_topic_probability:
+            final_topics.append(RESOLVED_TOPIC_PREFIX + topic)
+        else:
+            final_topics.append(topic)
+
+    return final_topics
+
 
 def load_generators(config: Dict[str, Any]) -> Dict[str, Any]:
 
@@ -54,10 +73,12 @@ def load_generators(config: Dict[str, Any]) -> Dict[str, Any]:
     results["inline-code"] = itertools.cycle(cfg["inline-code"])
     results["code-blocks"] = itertools.cycle(cfg["code-blocks"])
     results["quote-blocks"] = itertools.cycle(cfg["quote-blocks"])
+    results["images"] = itertools.cycle(cfg["images"])
 
     results["lists"] = itertools.cycle(cfg["lists"])
 
     return results
+
 
 def parse_file(config: Dict[str, Any], gens: Dict[str, Any], corpus_file: str) -> List[str]:
 
@@ -73,6 +94,7 @@ def parse_file(config: Dict[str, Any], gens: Dict[str, Any], corpus_file: str) -
 
     return paragraphs
 
+
 def get_flair_gen(length: int) -> List[str]:
 
     # Grab the percentages from the config file
@@ -86,6 +108,7 @@ def get_flair_gen(length: int) -> List[str]:
 
     random.shuffle(result)
     return result
+
 
 def add_flair(paragraphs: List[str], gens: Dict[str, Any]) -> List[str]:
 
@@ -120,12 +143,19 @@ def add_flair(paragraphs: List[str], gens: Dict[str, Any]) -> List[str]:
             txt = add_emoji(paragraphs[i], next(gens["emojis"]))
         elif key == "link":
             txt = add_link(paragraphs[i], next(gens["links"]))
-        elif key == "picture":
-            txt = txt      # TODO: implement pictures
+        elif key == "images":
+            # Ideally, this would actually be a 2-step process that
+            # first hits the `upload` endpoint and then adds that URL;
+            # this is the hacky version where we just use inline image
+            # previews of files already in the project (which are the
+            # only files we can link to as being definitely available
+            # even when developing offline).
+            txt = paragraphs[i] + "\n" + next(gens["images"])
 
         results.append(txt)
 
     return results
+
 
 def add_md(mode: str, text: str) -> str:
 
@@ -142,6 +172,7 @@ def add_md(mode: str, text: str) -> str:
 
     return " ".join(vals).strip()
 
+
 def add_emoji(text: str, emoji: str) -> str:
 
     vals = text.split()
@@ -149,6 +180,7 @@ def add_emoji(text: str, emoji: str) -> str:
 
     vals[start] = vals[start] + " " + emoji + " "
     return " ".join(vals)
+
 
 def add_link(text: str, link: str) -> str:
 
@@ -159,12 +191,13 @@ def add_link(text: str, link: str) -> str:
 
     return " ".join(vals)
 
+
 def remove_line_breaks(fh: Any) -> List[str]:
 
     # We're going to remove line breaks from paragraphs
-    results = []    # save the dialogs as tuples with (author, dialog)
+    results = []  # save the dialogs as tuples with (author, dialog)
 
-    para = []   # we'll store the lines here to form a paragraph
+    para = []  # we'll store the lines here to form a paragraph
 
     for line in fh:
         text = line.strip()
@@ -180,19 +213,24 @@ def remove_line_breaks(fh: Any) -> List[str]:
 
     return results
 
+
 def write_file(paragraphs: List[str], filename: str) -> None:
 
     with open(filename, "wb") as outfile:
         outfile.write(orjson.dumps(paragraphs))
 
+
 def create_test_data() -> None:
 
-    gens = load_generators(config)   # returns a dictionary of generators
+    gens = load_generators(config)  # returns a dictionary of generators
 
     paragraphs = parse_file(config, gens, config["corpus"]["filename"])
 
-    write_file(paragraphs, os.path.join(get_or_create_dev_uuid_var_path('test-backend'),
-                                        "test_messages.json"))
+    write_file(
+        paragraphs,
+        os.path.join(get_or_create_dev_uuid_var_path("test-backend"), "test_messages.json"),
+    )
+
 
 config = load_config()
 

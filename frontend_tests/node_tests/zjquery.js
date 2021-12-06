@@ -2,9 +2,8 @@
 
 const {strict: assert} = require("assert");
 
-const {set_global} = require("../zjsunit/namespace");
 const {run_test} = require("../zjsunit/test");
-const {make_zjquery} = require("../zjsunit/zjquery");
+const $ = require("../zjsunit/zjquery");
 
 /*
 
@@ -26,15 +25,9 @@ What is zjquery?
 
 The code we are testing lives here:
 
-    https://github.com/zulip/zulip/blob/master/frontend_tests/zjsunit/zjquery.js
+    https://github.com/zulip/zulip/blob/main/frontend_tests/zjsunit/zjquery.js
 
 */
-
-// The first thing we do to use zjquery is patch our global namespace
-// with zjquery as follows.  This call gives us our own instance of a
-// zjquery stub variable.  Like with real jQuery, the '$' function will
-// be the gateway to a bigger API.
-set_global("$", make_zjquery());
 
 run_test("basics", () => {
     // Let's create a sample piece of code to test:
@@ -44,11 +37,11 @@ run_test("basics", () => {
     }
 
     // Before we call show_my_form, we can assert that my-form is hidden:
-    assert(!$("#my-form").visible());
+    assert.ok(!$("#my-form").visible());
 
     // Then calling show_my_form() should make it visible.
     show_my_form();
-    assert($("#my-form").visible());
+    assert.ok($("#my-form").visible());
 
     // Next, look at how several functions correctly simulate setting
     // and getting for you.
@@ -69,8 +62,8 @@ run_test("basics", () => {
     widget.html("<b>hello</b>");
     assert.equal(widget.html(), "<b>hello</b>");
 
-    widget.prop("title", "My Widget");
-    assert.equal(widget.prop("title"), "My Widget");
+    widget.prop("title", "My widget");
+    assert.equal(widget.prop("title"), "My widget");
 
     widget.val("42");
     assert.equal(widget.val(), "42");
@@ -115,7 +108,7 @@ run_test("finding_related_objects", () => {
 
     elem.set_parents_result(".folder", my_parents);
     elem.parents(".folder").addClass("active");
-    assert(my_parents.hasClass("active"));
+    assert.ok(my_parents.hasClass("active"));
 });
 
 run_test("clicks", () => {
@@ -135,8 +128,8 @@ run_test("clicks", () => {
 
     // Setting up the click handlers doesn't change state right away.
     set_up_click_handlers();
-    assert(!state.clicked);
-    assert(!state.keydown);
+    assert.ok(!state.clicked);
+    assert.ok(!state.keydown);
 
     // But we can simulate clicks.
     $("#widget1").trigger("click");
@@ -199,31 +192,8 @@ run_test("create", () => {
     const obj2 = $.create("the collection of rows in the table");
 
     obj1.show();
-    assert(obj1.visible());
+    assert.ok(obj1.visible());
 
     obj2.addClass(".striped");
-    assert(obj2.hasClass(".striped"));
-});
-
-run_test("extensions", () => {
-    // You can extend $.fn so that all subsequent objects
-    // we create get a new function.
-
-    $.fn.area = function () {
-        return this.width() * this.height();
-    };
-
-    // Before we use area, though, let's illustrate that
-    // the predominant Zulip testing style is to stub objects
-    // using direct syntax:
-
-    const rect = $.create("rectangle");
-    rect.width = () => 5;
-    rect.height = () => 7;
-
-    assert.equal(rect.width(), 5);
-    assert.equal(rect.height(), 7);
-
-    // But we also have area available from general extension.
-    assert.equal(rect.area(), 35);
+    assert.ok(obj2.hasClass(".striped"));
 });

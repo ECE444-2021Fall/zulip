@@ -5,6 +5,7 @@ from argparse import ArgumentParser, RawTextHelpFormatter
 from typing import Any
 
 from django.conf import settings
+from django.core.management.base import CommandParser
 from django.db import connection
 from django.utils.timezone import now as timezone_now
 
@@ -16,15 +17,15 @@ from zerver.logging_handlers import try_git_describe
 
 class Command(ZulipBaseCommand):
     # Fix support for multi-line usage strings
-    def create_parser(self, *args: Any, **kwargs: Any) -> ArgumentParser:
-        parser = super().create_parser(*args, **kwargs)
+    def create_parser(self, prog_name: str, subcommand: str, **kwargs: Any) -> CommandParser:
+        parser = super().create_parser(prog_name, subcommand, **kwargs)
         parser.formatter_class = RawTextHelpFormatter
         return parser
 
     def add_arguments(self, parser: ArgumentParser) -> None:
         parser.add_argument("--output", help="Filename of output tarball")
-        parser.add_argument("--skip-db", action='store_true', help="Skip database backup")
-        parser.add_argument("--skip-uploads", action='store_true', help="Skip uploads backup")
+        parser.add_argument("--skip-db", action="store_true", help="Skip database backup")
+        parser.add_argument("--skip-uploads", action="store_true", help="Skip uploads backup")
 
     def handle(self, *args: Any, **options: Any) -> None:
         timestamp = timezone_now().strftime(TIMESTAMP_FORMAT)
@@ -64,7 +65,7 @@ class Command(ZulipBaseCommand):
                 members.append("/etc/zulip")
                 paths.append(("settings", "/etc/zulip"))
 
-            if not options['skip_db']:
+            if not options["skip_db"]:
                 pg_dump_command = [
                     "pg_dump",
                     "--format=directory",
@@ -83,8 +84,12 @@ class Command(ZulipBaseCommand):
                 )
                 members.append("zulip-backup/database")
 
-            if not options['skip_uploads'] and settings.LOCAL_UPLOADS_DIR is not None and os.path.exists(
-                os.path.join(settings.DEPLOY_ROOT, settings.LOCAL_UPLOADS_DIR),
+            if (
+                not options["skip_uploads"]
+                and settings.LOCAL_UPLOADS_DIR is not None
+                and os.path.exists(
+                    os.path.join(settings.DEPLOY_ROOT, settings.LOCAL_UPLOADS_DIR),
+                )
             ):
                 members.append(
                     os.path.join(settings.DEPLOY_ROOT, settings.LOCAL_UPLOADS_DIR),
@@ -99,7 +104,8 @@ class Command(ZulipBaseCommand):
             assert not any("|" in name or "|" in path for name, path in paths)
             transform_args = [
                 r"--transform=s|^{}(/.*)?$|zulip-backup/{}\1|x".format(
-                    re.escape(path), name.replace("\\", r"\\"),
+                    re.escape(path),
+                    name.replace("\\", r"\\"),
                 )
                 for name, path in paths
             ]
@@ -115,10 +121,15 @@ class Command(ZulipBaseCommand):
                     tarball_path = options["output"]
 
                 run(
-                    ["tar", f"--directory={tmp}", "-cPzf", tarball_path,
-                     *transform_args,
-                     "--",
-                     *members]
+                    [
+                        "tar",
+                        f"--directory={tmp}",
+                        "-cPzf",
+                        tarball_path,
+                        *transform_args,
+                        "--",
+                        *members,
+                    ]
                 )
                 print(f"Backup tarball written to {tarball_path}")
             except BaseException:

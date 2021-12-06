@@ -1,27 +1,35 @@
-"use strict";
+import {format, isSameDay} from "date-fns";
+import $ from "jquery";
 
-const XDate = require("xdate");
+import render_message_edit_history from "../templates/message_edit_history.hbs";
+import render_message_history_modal from "../templates/message_history_modal.hbs";
 
-const render_message_edit_history = require("../templates/message_edit_history.hbs");
+import * as channel from "./channel";
+import * as dialog_widget from "./dialog_widget";
+import {$t_html} from "./i18n";
+import * as message_lists from "./message_lists";
+import {page_params} from "./page_params";
+import * as people from "./people";
+import * as popovers from "./popovers";
+import * as rows from "./rows";
+import * as timerender from "./timerender";
+import * as ui_report from "./ui_report";
 
-const people = require("./people");
-
-exports.fetch_and_render_message_history = function (message) {
+export function fetch_and_render_message_history(message) {
     channel.get({
         url: "/json/messages/" + message.id + "/history",
         data: {message_id: JSON.stringify(message.id)},
         success(data) {
             const content_edit_history = [];
-            let prev_datestamp = null;
+            let prev_time = null;
 
             for (const [index, msg] of data.message_history.entries()) {
                 // Format times and dates nicely for display
-                const time = new XDate(msg.timestamp * 1000);
-                const datestamp = time.toDateString();
+                const time = new Date(msg.timestamp * 1000);
                 const item = {
                     timestamp: timerender.stringify_time(time),
-                    display_date: time.toString("MMMM d, yyyy"),
-                    show_date_row: datestamp !== prev_datestamp,
+                    display_date: format(time, "MMMM d, yyyy"),
+                    show_date_row: prev_time === null || !isSameDay(time, prev_time),
                 };
 
                 if (msg.user_id) {
@@ -51,7 +59,7 @@ exports.fetch_and_render_message_history = function (message) {
 
                 content_edit_history.push(item);
 
-                prev_datestamp = datestamp;
+                prev_time = time;
             }
             $("#message-history").attr("data-message-id", message.id);
             $("#message-history").html(
@@ -62,18 +70,56 @@ exports.fetch_and_render_message_history = function (message) {
         },
         error(xhr) {
             ui_report.error(
-                i18n.t("Error fetching message edit history"),
+                $t_html({defaultMessage: "Error fetching message edit history"}),
                 xhr,
-                $("#message-history-error"),
+                $("#dialog_error"),
             );
         },
     });
-};
+}
 
-exports.show_history = function (message) {
-    $("#message-history").html("");
-    $("#message-edit-history").modal("show");
-    exports.fetch_and_render_message_history(message);
-};
+export function show_history(message) {
+    const rendered_message_history = render_message_history_modal();
 
-window.message_edit_history = exports;
+    dialog_widget.launch({
+        html_heading: $t_html({defaultMessage: "Message edit history"}),
+        html_body: rendered_message_history,
+        html_submit_button: $t_html({defaultMessage: "Close"}),
+        id: "message-edit-history",
+        on_click: () => {},
+        close_on_submit: true,
+        focus_submit_on_open: true,
+        single_footer_button: true,
+        post_render: () => {
+            fetch_and_render_message_history(message);
+        },
+    });
+}
+
+export function initialize() {
+    $("body").on("mouseenter", ".message_edit_notice", (e) => {
+        if (page_params.realm_allow_edit_history) {
+            $(e.currentTarget).addClass("message_edit_notice_hover");
+        }
+    });
+
+    $("body").on("mouseleave", ".message_edit_notice", (e) => {
+        if (page_params.realm_allow_edit_history) {
+            $(e.currentTarget).removeClass("message_edit_notice_hover");
+        }
+    });
+
+    $("body").on("click", ".message_edit_notice", (e) => {
+        popovers.hide_all();
+        const message_id = rows.id($(e.currentTarget).closest(".message_row"));
+        const row = message_lists.current.get_row(message_id);
+        const message = message_lists.current.get(rows.id(row));
+
+        if (page_params.realm_allow_edit_history) {
+            show_history(message);
+            $("#message-history-cancel").trigger("focus");
+        }
+        e.stopPropagation();
+        e.preventDefault();
+    });
+}

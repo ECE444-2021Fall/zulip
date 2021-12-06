@@ -2,23 +2,21 @@
 
 const {strict: assert} = require("assert");
 
-const {set_global, zrequire} = require("../zjsunit/namespace");
+const {mock_esm, zrequire} = require("../zjsunit/namespace");
 const {run_test} = require("../zjsunit/test");
+const blueslip = require("../zjsunit/zblueslip");
 
-zrequire("Filter", "js/filter");
-const people = zrequire("people");
-zrequire("stream_data");
-zrequire("unread");
-
-set_global("message_store", {});
-set_global("page_params", {});
-
-set_global("muting", {
+mock_esm("../../static/js/muted_topics", {
     is_topic_muted: () => false,
 });
 
+const {Filter} = zrequire("../js/filter");
+const message_store = zrequire("message_store");
+const people = zrequire("people");
+const stream_data = zrequire("stream_data");
+const unread = zrequire("unread");
 // The main code we are testing lives here.
-zrequire("narrow_state");
+const narrow_state = zrequire("narrow_state");
 
 const alice = {
     email: "alice@example.com",
@@ -44,11 +42,14 @@ function candidate_ids() {
 }
 
 run_test("get_unread_ids", () => {
+    unread.declare_bankruptcy();
+    narrow_state.reset_current_filter();
+
     let unread_ids;
     let terms;
 
     const sub = {
-        name: "My Stream",
+        name: "My stream",
         stream_id: 55,
     };
 
@@ -68,6 +69,9 @@ run_test("get_unread_ids", () => {
         unread: true,
         display_recipient: [{id: alice.user_id}],
     };
+
+    message_store.update_message_cache(stream_msg);
+    message_store.update_message_cache(private_msg);
 
     stream_data.add_sub(sub);
 
@@ -98,11 +102,6 @@ run_test("get_unread_ids", () => {
     assert_unread_info({flavor: "not_found"});
 
     unread.process_loaded_messages([stream_msg]);
-    message_store.get = (msg_id) => {
-        assert.equal(msg_id, stream_msg.id);
-        return stream_msg;
-    };
-
     unread_ids = candidate_ids();
     assert.deepEqual(unread_ids, [stream_msg.id]);
     assert_unread_info({
@@ -131,6 +130,11 @@ run_test("get_unread_ids", () => {
     unread_ids = candidate_ids();
     assert.deepEqual(unread_ids, [stream_msg.id]);
 
+    terms = [{operator: "is", operand: "resolved"}];
+    set_filter(terms);
+    unread_ids = candidate_ids();
+    assert.deepEqual(unread_ids, [stream_msg.id]);
+
     terms = [{operator: "sender", operand: "me@example.com"}];
     set_filter(terms);
     // note that our candidate ids are just "all" ids now
@@ -146,11 +150,6 @@ run_test("get_unread_ids", () => {
     assert.deepEqual(unread_ids, []);
 
     unread.process_loaded_messages([private_msg]);
-
-    message_store.get = (msg_id) => {
-        assert.equal(msg_id, private_msg.id);
-        return private_msg;
-    };
 
     unread_ids = candidate_ids();
     assert.deepEqual(unread_ids, [private_msg.id]);
@@ -197,12 +196,12 @@ run_test("get_unread_ids", () => {
     });
 });
 
-run_test("defensive code", () => {
+run_test("defensive code", ({override}) => {
     // Test defensive code.  We actually avoid calling
     // _possible_unread_message_ids for any case where we
     // couldn't compute the unread message ids, but that
     // invariant is hard to future-proof.
-    narrow_state._possible_unread_message_ids = () => undefined;
+    override(narrow_state, "_possible_unread_message_ids", () => undefined);
     const terms = [{operator: "some-unhandled-case", operand: "whatever"}];
     set_filter(terms);
     assert_unread_info({

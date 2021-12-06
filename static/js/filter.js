@@ -1,10 +1,16 @@
-"use strict";
+import Handlebars from "handlebars/runtime";
+import _ from "lodash";
 
-const Handlebars = require("handlebars/runtime");
-const _ = require("lodash");
-
-const people = require("./people");
-const util = require("./util");
+import * as hash_util from "./hash_util";
+import {$t} from "./i18n";
+import * as message_edit from "./message_edit";
+import * as message_parser from "./message_parser";
+import * as message_store from "./message_store";
+import {page_params} from "./page_params";
+import * as people from "./people";
+import * as stream_data from "./stream_data";
+import * as unread from "./unread";
+import * as util from "./util";
 
 function zephyr_stream_name_match(message, operand) {
     // Zephyr users expect narrowing to "social" to also show messages to /^(un)*social(.d)*$/
@@ -65,35 +71,47 @@ function message_in_home(message) {
 function message_matches_search_term(message, operator, operand) {
     switch (operator) {
         case "has":
-            if (operand === "image") {
-                return message_util.message_has_image(message);
-            } else if (operand === "link") {
-                return message_util.message_has_link(message);
-            } else if (operand === "attachment") {
-                return message_util.message_has_attachment(message);
+            switch (operand) {
+                case "image":
+                    return message_parser.message_has_image(message);
+                case "link":
+                    return message_parser.message_has_link(message);
+                case "attachment":
+                    return message_parser.message_has_attachment(message);
+                default:
+                    return false; // has:something_else returns false
             }
-            return false; // has:something_else returns false
+
         case "is":
-            if (operand === "private") {
-                return message.type === "private";
-            } else if (operand === "starred") {
-                return message.starred;
-            } else if (operand === "mentioned") {
-                return message.mentioned;
-            } else if (operand === "alerted") {
-                return message.alerted;
-            } else if (operand === "unread") {
-                return unread.message_unread(message);
+            switch (operand) {
+                case "private":
+                    return message.type === "private";
+                case "starred":
+                    return message.starred;
+                case "mentioned":
+                    return message.mentioned;
+                case "alerted":
+                    return message.alerted;
+                case "unread":
+                    return unread.message_unread(message);
+                case "resolved":
+                    return (
+                        message.type === "stream" &&
+                        message.topic.startsWith(message_edit.RESOLVED_TOPIC_PREFIX)
+                    );
+                default:
+                    return false; // is:whatever returns false
             }
-            return true; // is:whatever returns true
 
         case "in":
-            if (operand === "home") {
-                return message_in_home(message);
-            } else if (operand === "all") {
-                return true;
+            switch (operand) {
+                case "home":
+                    return message_in_home(message);
+                case "all":
+                    return true;
+                default:
+                    return false; // in:whatever returns false
             }
-            return true; // in:whatever returns true
 
         case "near":
             // this is all handled server side
@@ -174,7 +192,7 @@ function message_matches_search_term(message, operator, operand) {
     return true; // unknown operators return true (effectively ignored)
 }
 
-class Filter {
+export class Filter {
     constructor(operators) {
         if (operators === undefined) {
             this._operators = [];
@@ -200,17 +218,9 @@ class Filter {
         return operator;
     }
 
-    static canonicalize_term(opts) {
-        let negated = opts.negated;
-        let operator = opts.operator;
-        let operand = opts.operand;
-
-        // Make negated be explicitly false for both clarity and
+    static canonicalize_term({negated = false, operator, operand}) {
+        // Make negated explicitly default to false for both clarity and
         // simplifying deepEqual checks in the tests.
-        if (!negated) {
-            negated = false;
-        }
-
         operator = Filter.canonicalize_operator(operator);
 
         switch (operator) {
@@ -283,11 +293,21 @@ class Filter {
     // Parse a string into a list of operators (see below).
     static parse(str) {
         const operators = [];
-        const search_term = [];
+        let search_term = [];
         let negated;
         let operator;
         let operand;
         let term;
+
+        function maybe_add_search_terms() {
+            if (search_term.length > 0) {
+                operator = "search";
+                const _operand = search_term.join(" ");
+                term = {operator, operand: _operand, negated: false};
+                operators.push(term);
+                search_term = [];
+            }
+        }
 
         // Match all operands that either have no spaces, or are surrounded by
         // quotes, preceded by an optional operator that may have a space after it.
@@ -321,18 +341,17 @@ class Filter {
                     search_term.push(token);
                     continue;
                 }
+                // If any search query was present and it is followed by some other filters
+                // then we must add that search filter in its current position in the
+                // operators list. This is done so that the last active filter is correctly
+                // detected by the `get_search_result` function (in search_suggestions.js).
+                maybe_add_search_terms();
                 term = {negated, operator, operand};
                 operators.push(term);
             }
         }
 
-        // NB: Callers of 'parse' can assume that the 'search' operator is last.
-        if (search_term.length > 0) {
-            operator = "search";
-            operand = search_term.join(" ");
-            term = {operator, operand, negated: false};
-            operators.push(term);
-        }
+        maybe_add_search_terms();
         return operators;
     }
 
@@ -386,10 +405,9 @@ class Filter {
     }
 
     operands(operator) {
-        return _.chain(this._operators)
+        return this._operators
             .filter((elem) => !elem.negated && elem.operator === operator)
-            .map((elem) => elem.operand)
-            .value();
+            .map((elem) => elem.operand);
     }
 
     has_negated_operand(operator, operand) {
@@ -417,6 +435,10 @@ class Filter {
         return this.has_operator("search");
     }
 
+    is_non_huddle_pm() {
+        return this.has_operator("pm-with") && this.operands("pm-with")[0].split(",").length === 1;
+    }
+
     calc_can_mark_messages_read() {
         const term_types = this.sorted_term_types();
 
@@ -442,6 +464,10 @@ class Filter {
         }
 
         if (_.isEqual(term_types, ["is-mentioned"])) {
+            return true;
+        }
+
+        if (_.isEqual(term_types, ["is-resolved"])) {
             return true;
         }
 
@@ -478,7 +504,7 @@ class Filter {
         // can_mark_messages_read tests the following filters:
         // stream, stream + topic,
         // is: private, pm-with:,
-        // is: mentioned
+        // is: mentioned, is: resolved
         if (this.can_mark_messages_read()) {
             return true;
         }
@@ -544,10 +570,12 @@ class Filter {
                 case "streams-public":
                     return "/#narrow/streams/public";
                 case "pm-with":
-                    // join is used to transform the array to a comma separated string
                     return (
-                        "/#narrow/pm-with/" + people.emails_to_slug(this.operands("pm-with").join())
+                        "/#narrow/pm-with/" +
+                        people.emails_to_slug(this.operands("pm-with").join(","))
                     );
+                case "is-resolved":
+                    return "/#narrow/topics/is/resolved";
                 // TODO: It is ambiguous how we want to handle the 'sender' case,
                 // we may remove it in the future based on design decisions
                 case "sender":
@@ -584,6 +612,8 @@ class Filter {
                 return "at";
             case "pm-with":
                 return "envelope";
+            case "is-resolved":
+                return "check";
             default:
                 return undefined;
         }
@@ -597,29 +627,29 @@ class Filter {
             (term_types.length === 2 && _.isEqual(term_types, ["stream", "topic"]))
         ) {
             if (!this._sub) {
-                return i18n.t("Unknown stream");
+                return $t({defaultMessage: "Unknown stream"});
             }
             return this._sub.name;
         }
         if (term_types.length === 1 || (term_types.length === 2 && term_types[1] === "search")) {
             switch (term_types[0]) {
                 case "in-home":
-                    return i18n.t("All messages");
+                    return $t({defaultMessage: "All messages"});
                 case "in-all":
-                    return i18n.t("All messages including muted streams");
+                    return $t({defaultMessage: "All messages including muted streams"});
                 case "streams-public":
-                    return i18n.t("Public stream messages in organization");
+                    return $t({defaultMessage: "Public stream messages in organization"});
                 case "stream":
                     if (!this._sub) {
-                        return i18n.t("Unknown stream");
+                        return $t({defaultMessage: "Unknown stream"});
                     }
                     return this._sub.name;
                 case "is-starred":
-                    return i18n.t("Starred messages");
+                    return $t({defaultMessage: "Starred messages"});
                 case "is-mentioned":
-                    return i18n.t("Mentions");
+                    return $t({defaultMessage: "Mentions"});
                 case "is-private":
-                    return i18n.t("Private messages");
+                    return $t({defaultMessage: "Private messages"});
                 case "pm-with": {
                     const emails = this.operands("pm-with")[0].split(",");
                     const names = emails.map((email) => {
@@ -634,6 +664,8 @@ class Filter {
                     // can have the same return type as other cases.
                     return names.join(", ");
                 }
+                case "is-resolved":
+                    return $t({defaultMessage: "Topics marked as resolved"});
             }
         }
         /* istanbul ignore next */
@@ -700,9 +732,7 @@ class Filter {
     }
 
     _fix_redundant_is_private(terms) {
-        const is_pm_with = (term) => Filter.term_type(term) === "pm-with";
-
-        if (!terms.some(is_pm_with)) {
+        if (!terms.some((term) => Filter.term_type(term) === "pm-with")) {
             return terms;
         }
 
@@ -737,7 +767,7 @@ class Filter {
 
     _build_sorted_term_types() {
         const terms = this._operators;
-        const term_types = terms.map(Filter.term_type);
+        const term_types = terms.map((term) => Filter.term_type(term));
         const sorted_terms = Filter.sorted_term_types(term_types);
         return sorted_terms;
     }
@@ -845,6 +875,7 @@ class Filter {
             "is-private",
             "is-starred",
             "is-unread",
+            "is-resolved",
             "has-link",
             "has-image",
             "has-attachment",
@@ -984,8 +1015,16 @@ class Filter {
     static describe(operators) {
         return Handlebars.Utils.escapeExpression(Filter.describe_unescaped(operators));
     }
+
+    static is_spectator_compatible(ops) {
+        for (const op of ops) {
+            if (op.operand === undefined) {
+                return false;
+            }
+            if (!hash_util.allowed_web_public_narrows.includes(op.operator)) {
+                return false;
+            }
+        }
+        return true;
+    }
 }
-
-module.exports = Filter;
-
-window.Filter = Filter;

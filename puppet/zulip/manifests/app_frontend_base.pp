@@ -50,6 +50,14 @@ class zulip::app_frontend_base {
       content => template('zulip/accept-loadbalancer.conf.template.erb'),
       notify  => Service['nginx'],
     }
+    file { '/etc/nginx/zulip-include/app.d/keepalive-loadbalancer.conf':
+      require => File['/etc/nginx/zulip-include/app.d'],
+      owner   => 'root',
+      group   => 'root',
+      mode    => '0644',
+      source  => 'puppet:///modules/zulip/nginx/zulip-include-app.d/keepalive-loadbalancer.conf',
+      notify  => Service['nginx'],
+    }
   }
 
   file { '/etc/nginx/zulip-include/upstreams':
@@ -64,7 +72,8 @@ class zulip::app_frontend_base {
   # This determines whether we run queue processors multithreaded or
   # multiprocess.  Multiprocess scales much better, but requires more
   # RAM; we just auto-detect based on available system RAM.
-  $queues_multiprocess = $zulip::common::total_memory_mb > 3500
+  $queues_multiprocess_default = $zulip::common::total_memory_mb > 3500
+  $queues_multiprocess = Boolean(zulipconf('application_server', 'queue_workers_multiprocess', $queues_multiprocess_default))
   $queues = [
     'deferred_work',
     'digest_emails',
@@ -77,7 +86,6 @@ class zulip::app_frontend_base {
     'missedmessage_emails',
     'missedmessage_mobile_notifications',
     'outgoing_webhooks',
-    'signups',
     'user_activity',
     'user_activity_interval',
     'user_presence',
@@ -88,8 +96,14 @@ class zulip::app_frontend_base {
     $uwsgi_default_processes = 4
   }
   $tornado_ports = $zulip::tornado_sharding::tornado_ports
-  $proxy_host = zulipconf('http_proxy', 'host', '')
-  $proxy_port = zulipconf('http_proxy', 'port', '')
+
+  $proxy_host = zulipconf('http_proxy', 'host', 'localhost')
+  $proxy_port = zulipconf('http_proxy', 'port', '4750')
+
+  if ($proxy_host in ['localhost', '127.0.0.1', '::1']) and ($proxy_port == '4750') {
+    include zulip::smokescreen
+  }
+
   if $proxy_host != '' and $proxy_port != '' {
     $proxy = "http://${proxy_host}:${proxy_port}"
   } else {
@@ -190,5 +204,14 @@ class zulip::app_frontend_base {
     group   => 'root',
     mode    => '0755',
     source  => 'puppet:///modules/zulip/nagios_plugins/zulip_app_frontend',
+  }
+
+  # This cron job does nothing unless RATE_LIMIT_TOR_TOGETHER is enabled.
+  file { '/etc/cron.d/fetch-for-exit-nodes':
+    ensure => file,
+    owner  => 'root',
+    group  => 'root',
+    mode   => '0644',
+    source => 'puppet:///modules/zulip/cron.d/fetch-tor-exit-nodes',
   }
 }

@@ -1,35 +1,29 @@
-"use strict";
+import $ from "jquery";
 
-exports.initialize = () => {
+import {page_params} from "../page_params";
+
+import * as helpers from "./helpers";
+
+export const initialize = () => {
     helpers.set_tab("upgrade");
-
-    const add_card_handler = StripeCheckout.configure({
-        key: $("#autopay-form").data("key"),
-        image: "/static/images/logo/zulip-icon-128x128.png",
-        locale: "auto",
-        token(stripe_token) {
-            helpers.create_ajax_request("/json/billing/upgrade", "autopay", stripe_token, [
-                "licenses",
-            ]);
-        },
-    });
-
     $("#add-card-button").on("click", (e) => {
         const license_management = $("input[type=radio][name=license_management]:checked").val();
-        if (helpers.is_valid_input($("#" + license_management + "_license_count")) === false) {
+        if (
+            helpers.is_valid_input($(`#${CSS.escape(license_management)}_license_count`)) === false
+        ) {
             return;
         }
-        add_card_handler.open({
-            name: "Zulip",
-            zipCode: true,
-            billingAddress: true,
-            panelLabel: "Make payment",
-            email: $("#autopay-form").data("email"),
-            label: "Add card",
-            allowRememberMe: false,
-            description: "Zulip Cloud Standard",
-        });
         e.preventDefault();
+        const success_callback = (response) => {
+            window.location.replace(response.stripe_session_url);
+        };
+        helpers.create_ajax_request(
+            "/json/billing/upgrade",
+            "autopay",
+            [],
+            "POST",
+            success_callback,
+        );
     });
 
     $("#invoice-button").on("click", (e) => {
@@ -37,7 +31,9 @@ exports.initialize = () => {
             return;
         }
         e.preventDefault();
-        helpers.create_ajax_request("/json/billing/upgrade", "invoice", undefined, ["licenses"]);
+        helpers.create_ajax_request("/json/billing/upgrade", "invoice", [], "POST", () =>
+            window.location.replace("/billing"),
+        );
     });
 
     $("#sponsorship-button").on("click", (e) => {
@@ -45,12 +41,8 @@ exports.initialize = () => {
             return;
         }
         e.preventDefault();
-        helpers.create_ajax_request(
-            "/json/billing/sponsorship",
-            "sponsorship",
-            undefined,
-            undefined,
-            "/",
+        helpers.create_ajax_request("/json/billing/sponsorship", "sponsorship", [], "POST", () =>
+            window.location.replace("/"),
         );
     });
 
@@ -66,8 +58,9 @@ exports.initialize = () => {
         helpers.update_charged_amount(prices, this.value);
     });
 
-    $("select[name=organization-type]").on("change", function () {
-        helpers.update_discount_details(this.value);
+    $("select[name=organization-type]").on("change", (e) => {
+        const string_value = $(e.currentTarget).find(":selected").attr("data-string-value");
+        helpers.update_discount_details(string_value);
     });
 
     $("#autopay_annual_price").text(helpers.format_money(prices.annual));
@@ -80,8 +73,6 @@ exports.initialize = () => {
     helpers.update_charged_amount(prices, $("input[type=radio][name=schedule]:checked").val());
 };
 
-window.upgrade = exports;
-
 $(() => {
-    exports.initialize();
+    initialize();
 });

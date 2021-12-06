@@ -1,4 +1,5 @@
-import * as google_analytics from "./google-analytics";
+import $ from "jquery";
+
 import {detect_user_os} from "./tabbed-instructions";
 import render_tabs from "./team";
 
@@ -39,6 +40,7 @@ const apps_events = function () {
             description:
                 "Zulip on macOS is even better than Zulip on the web, with a cleaner look, tray integration, native notifications, and support for multiple Zulip accounts.",
             download_link: "/apps/download/mac",
+            mac_arm64_link: "/apps/download/mac-arm64",
             show_instructions: true,
             install_guide: "/help/desktop-app-install-guide",
             app_type: "desktop",
@@ -79,23 +81,14 @@ const apps_events = function () {
         let result;
         const parts = path_parts();
 
-        Object.keys(info).forEach((version) => {
+        for (const version of Object.keys(info)) {
             if (parts.includes(version)) {
                 result = version;
             }
-        });
+        }
 
         result = result || detect_user_os();
         return result;
-    }
-
-    function get_path_from_version() {
-        return "/apps/" + version;
-    }
-
-    function update_path() {
-        const next_path = get_path_from_version();
-        history.pushState(version, "", next_path);
     }
 
     const update_page = function () {
@@ -104,15 +97,17 @@ const apps_events = function () {
         const $download_android_apk = $("#download-android-apk");
         const $download_from_google_play_store = $(".download-from-google-play-store");
         const $download_from_apple_app_store = $(".download-from-apple-app-store");
+        const $download_mac_arm64 = $("#download-mac-arm64");
         const $desktop_download_link = $(".desktop-download-link");
         const version_info = info[version];
 
         $(".info .platform").text(version_info.alt);
         $(".info .description").text(version_info.description);
-        $(".info .desktop-download-link").attr("href", version_info.download_link);
-        $(".download-from-google-play-store").attr("href", version_info.play_store_link);
-        $(".download-from-apple-app-store").attr("href", version_info.app_store_link);
-        $("#download-android-apk a").attr("href", version_info.download_link);
+        $desktop_download_link.attr("href", version_info.download_link);
+        $download_from_google_play_store.attr("href", version_info.play_store_link);
+        $download_from_apple_app_store.attr("href", version_info.app_store_link);
+        $download_android_apk.attr("href", version_info.download_link);
+        $download_mac_arm64.attr("href", version_info.mac_arm64_link);
         $(".image img").attr("src", version_info.image);
         $download_instructions.find("a").attr("href", version_info.install_guide);
 
@@ -123,30 +118,11 @@ const apps_events = function () {
         $download_android_apk.toggle(version === "android");
         $download_from_google_play_store.toggle(version === "android");
         $download_from_apple_app_store.toggle(version === "ios");
+        $download_mac_arm64.toggle(version === "mac");
     };
-
-    $(window).on("popstate", () => {
-        version = get_version_from_path();
-        update_page();
-        $("body").animate({scrollTop: 0}, 200);
-        google_analytics.config({page_path: window.location.pathname});
-    });
-
-    $(".apps a .icon").on("click", (e) => {
-        const next_version = $(e.target).closest("a").attr("href").replace("/apps/", "");
-        version = next_version;
-
-        update_path();
-        update_page();
-        $("body").animate({scrollTop: 0}, 200);
-        google_analytics.config({page_path: window.location.pathname});
-
-        return false;
-    });
 
     // init
     version = get_version_from_path();
-    history.replaceState(version, "", get_path_from_version());
     update_page();
 };
 
@@ -156,22 +132,31 @@ const events = function () {
     // pop the last element to get the current section (eg. `features`).
     const location = window.location.pathname.replace(/\/#*$/, "").split(/\//).pop();
 
-    $("[data-on-page='" + location + "']").addClass("active");
+    $(`[data-on-page='${CSS.escape(location)}']`).addClass("active");
 
     $("body").on("click", (e) => {
         const $e = $(e.target);
 
         if ($e.is("nav ul .exit")) {
-            $("nav ul").removeClass("show");
+            $("nav ul").css("transform", "translate(-350px, 0)");
+            // See https://ishadeed.com/article/layout-flickering/ for
+            // more context as to why the following timeout is important.
+            setTimeout(() => {
+                $("nav ul").removeClass("show");
+                $("nav ul").css("transform", "");
+                $("body").removeClass("noscroll");
+            }, 500);
         }
 
         if ($("nav ul.show") && !$e.closest("nav ul.show").length && !$e.is("nav ul.show")) {
             $("nav ul").removeClass("show");
+            $("body").removeClass("noscroll");
         }
     });
 
     $(".hamburger").on("click", (e) => {
         $("nav ul").addClass("show");
+        $("body").addClass("noscroll");
         e.stopPropagation();
     });
 
@@ -224,4 +209,26 @@ $(() => {
     if (window.location.pathname === "/team/") {
         render_tabs();
     }
+
+    // Source: https://stackoverflow.com/questions/819416/adjust-width-and-height-of-iframe-to-fit-with-content-in-it
+    // Resize tweet to avoid overlapping with image. Since tweet uses an iframe which doesn't adjust with
+    // screen resize, we need to manually adjust its width.
+
+    function resizeIFrameToFitContent(iFrame) {
+        $(iFrame).width("38vw");
+    }
+
+    window.addEventListener("resize", () => {
+        const iframes = document.querySelectorAll(".twitter-tweet iframe");
+        for (const iframe of iframes) {
+            resizeIFrameToFitContent(iframe);
+        }
+    });
+});
+
+// Scroll to anchor link when clicked. Note that help.js has a similar
+// function; this file and help.js are never included on the same
+// page.
+$(document).on("click", ".markdown h1, .markdown h2, .markdown h3", function () {
+    window.location.hash = $(this).attr("id");
 });

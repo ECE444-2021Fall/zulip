@@ -4,33 +4,20 @@ const {strict: assert} = require("assert");
 
 const _ = require("lodash");
 
-const {set_global, zrequire} = require("../zjsunit/namespace");
+const {mock_esm, set_global, zrequire} = require("../zjsunit/namespace");
 const {run_test} = require("../zjsunit/test");
-const {make_zjquery} = require("../zjsunit/zjquery");
+const {user_settings} = require("../zjsunit/zpage_params");
 
-set_global("$", make_zjquery());
 set_global("document", "document-stub");
 
-zrequire("Filter", "js/filter");
-zrequire("FetchStatus", "js/fetch_status");
-zrequire("MessageListData", "js/message_list_data");
-zrequire("MessageListView", "js/message_list_view");
-zrequire("message_list");
+const noop = () => {};
 
-const noop = function () {};
+user_settings.twenty_four_hour_time = false;
 
-set_global("page_params", {
-    twenty_four_hour_time: false,
-});
-set_global("home_msg_list", null);
-set_global("people", {
-    small_avatar_url() {
-        return "";
-    },
-});
-set_global("unread", {message_unread() {}});
+mock_esm("../../static/js/message_lists", {home: "stub"});
+
 // timerender calls setInterval when imported
-set_global("timerender", {
+mock_esm("../../static/js/timerender", {
     render_date(time1, time2) {
         if (time2 === undefined) {
             return [{outerHTML: String(time1.getTime())}];
@@ -38,14 +25,14 @@ set_global("timerender", {
         return [{outerHTML: String(time1.getTime()) + " - " + String(time2.getTime())}];
     },
     stringify_time(time) {
-        if (page_params.twenty_four_hour_time) {
+        if (user_settings.twenty_four_hour_time) {
             return time.toString("HH:mm");
         }
         return time.toString("h:mm TT");
     },
 });
 
-set_global("rows", {
+mock_esm("../../static/js/rows", {
     get_table() {
         return {
             children() {
@@ -57,9 +44,21 @@ set_global("rows", {
     },
 });
 
+const {Filter} = zrequire("../js/filter");
+const {MessageListView} = zrequire("../js/message_list_view");
+const message_list = zrequire("message_list");
+const muted_users = zrequire("muted_users");
+
 let next_timestamp = 1500000000;
 
-run_test("msg_edited_vars", () => {
+function test(label, f) {
+    run_test(label, ({override}) => {
+        muted_users.set_muted_users([]);
+        f({override});
+    });
+}
+
+test("msg_edited_vars", () => {
     // This is a test to verify that only one of the three bools,
     // `edited_in_left_col`, `edited_alongside_sender`, `edited_status_msg`
     // is not false; Tests for three different kinds of messages:
@@ -67,13 +66,7 @@ run_test("msg_edited_vars", () => {
     //   * message that includes sender
     //   * message without sender
 
-    function build_message_context(message, message_context) {
-        if (message_context === undefined) {
-            message_context = {};
-        }
-        if (message === undefined) {
-            message = {};
-        }
+    function build_message_context(message = {}, message_context = {}) {
         message_context = {
             include_sender: true,
             ...message_context,
@@ -136,17 +129,118 @@ run_test("msg_edited_vars", () => {
     })();
 });
 
-run_test("merge_message_groups", () => {
+test("muted_message_vars", () => {
+    // This verifies that the variables for muted/hidden messages are set
+    // correctly.
+
+    function build_message_context(message = {}, message_context = {}) {
+        message_context = {
+            ...message_context,
+        };
+        message_context.msg = {
+            ...message,
+        };
+        return message_context;
+    }
+
+    function build_message_group(messages) {
+        return {message_containers: messages};
+    }
+
+    function build_list(message_groups) {
+        const list = new MessageListView(undefined, undefined, true);
+        list._message_groups = message_groups;
+        return list;
+    }
+
+    function calculate_variables(list, messages, is_revealed) {
+        list.set_calculated_message_container_variables(messages[0], is_revealed);
+        list.set_calculated_message_container_variables(messages[1], is_revealed);
+        list.set_calculated_message_container_variables(messages[2], is_revealed);
+        return list._message_groups[0].message_containers;
+    }
+
+    (function test_hidden_message_variables() {
+        // Make a representative message group of three messages.
+        const messages = [
+            build_message_context({sender_id: 10}, {include_sender: true}),
+            build_message_context({mentioned: true, sender_id: 10}, {include_sender: false}),
+            build_message_context({sender_id: 10}, {include_sender: false}),
+        ];
+        const message_group = build_message_group(messages);
+        const list = build_list([message_group]);
+        list._add_msg_edited_vars = noop;
+
+        // Sender is not muted.
+        let result = calculate_variables(list, messages);
+
+        // Check that `is_hidden` is false on all messages, and `include_sender` has not changed.
+        assert.equal(result[0].is_hidden, false);
+        assert.equal(result[1].is_hidden, false);
+        assert.equal(result[2].is_hidden, false);
+
+        assert.equal(result[0].include_sender, true);
+        assert.equal(result[1].include_sender, false);
+        assert.equal(result[2].include_sender, false);
+
+        // Additionally test that, `contains_mention` is true on that message has a mention.
+        assert.equal(result[1].contains_mention, true);
+
+        // Now, mute the sender.
+        muted_users.add_muted_user(10);
+        result = calculate_variables(list, messages);
+
+        // Check that `is_hidden` is true and `include_sender` is false on all messages.
+        assert.equal(result[0].is_hidden, true);
+        assert.equal(result[1].is_hidden, true);
+        assert.equal(result[2].is_hidden, true);
+
+        assert.equal(result[0].include_sender, false);
+        assert.equal(result[1].include_sender, false);
+        assert.equal(result[2].include_sender, false);
+
+        // Additionally test that, `contains_mention` is false even on that message which has a mention.
+        assert.equal(result[1].contains_mention, false);
+
+        // Now, reveal the hidden messages.
+        let is_revealed = true;
+        result = calculate_variables(list, messages, is_revealed);
+
+        // Check that `is_hidden` is false and `include_sender` is true on all messages.
+        assert.equal(result[0].is_hidden, false);
+        assert.equal(result[1].is_hidden, false);
+        assert.equal(result[2].is_hidden, false);
+
+        assert.equal(result[0].include_sender, true);
+        assert.equal(result[1].include_sender, true);
+        assert.equal(result[2].include_sender, true);
+
+        // Additionally test that, `contains_mention` is true on that message which has a mention.
+        assert.equal(result[1].contains_mention, true);
+
+        // Now test rehiding muted user's message
+        is_revealed = false;
+        result = calculate_variables(list, messages, is_revealed);
+
+        // Check that `is_hidden` is false and `include_sender` is false on all messages.
+        assert.equal(result[0].is_hidden, true);
+        assert.equal(result[1].is_hidden, true);
+        assert.equal(result[2].is_hidden, true);
+
+        assert.equal(result[0].include_sender, false);
+        assert.equal(result[1].include_sender, false);
+        assert.equal(result[2].include_sender, false);
+
+        // Additionally test that, `contains_mention` is false on that message which has a mention.
+        assert.equal(result[1].contains_mention, false);
+    })();
+});
+
+test("merge_message_groups", () => {
     // MessageListView has lots of DOM code, so we are going to test the message
     // group mearging logic on its own.
 
-    function build_message_context(message, message_context) {
-        if (message_context === undefined) {
-            message_context = {};
-        }
-        if (message === undefined) {
-            message = {};
-        }
+    function build_message_context(message = {}, message_context = {}) {
         message_context = {
             include_sender: true,
             ...message_context,
@@ -155,8 +249,8 @@ run_test("merge_message_groups", () => {
             id: _.uniqueId("test_message_"),
             status_message: false,
             type: "stream",
-            stream: "Test Stream 1",
-            topic: "Test Subject 1",
+            stream: "Test stream 1",
+            topic: "Test subject 1",
             sender_email: "test@example.com",
             timestamp: (next_timestamp += 1),
             ...message,
@@ -188,7 +282,7 @@ run_test("merge_message_groups", () => {
     function assert_message_list_equal(list1, list2) {
         const ids1 = extract_message_ids(list1);
         const ids2 = extract_message_ids(list2);
-        assert(ids1.length);
+        assert.ok(ids1.length);
         assert.deepEqual(ids1, ids2);
     }
 
@@ -197,9 +291,9 @@ run_test("merge_message_groups", () => {
     }
 
     function assert_message_groups_list_equal(list1, list2) {
-        const ids1 = list1.map(extract_group);
-        const ids2 = list2.map(extract_group);
-        assert(ids1.length);
+        const ids1 = list1.map((group) => extract_group(group));
+        const ids2 = list2.map((group) => extract_group(group));
+        assert.ok(ids1.length);
         assert.deepEqual(ids1, ids2);
     }
 
@@ -247,7 +341,7 @@ run_test("merge_message_groups", () => {
         const list = build_list([message_group1]);
         const result = list.merge_message_groups([message_group2], "bottom");
 
-        assert(!message_group2.group_date_divider_html);
+        assert.ok(!message_group2.group_date_divider_html);
         assert_message_groups_list_equal(list._message_groups, [message_group1, message_group2]);
         assert_message_groups_list_equal(result.append_groups, [message_group2]);
         assert.deepEqual(result.prepend_groups, []);
@@ -291,7 +385,7 @@ run_test("merge_message_groups", () => {
         assert.deepEqual(result.rerender_groups, []);
         assert.deepEqual(result.append_messages, [message2]);
         assert.deepEqual(result.rerender_messages_next_same_sender, [message1]);
-        assert(list._message_groups[0].message_containers[1].want_date_divider);
+        assert.ok(list._message_groups[0].message_containers[1].want_date_divider);
     })();
 
     (function test_append_message_historical() {
@@ -304,7 +398,7 @@ run_test("merge_message_groups", () => {
         const list = build_list([message_group1]);
         const result = list.merge_message_groups([message_group2], "bottom");
 
-        assert(message_group2.bookend_top);
+        assert.ok(message_group2.bookend_top);
         assert_message_groups_list_equal(list._message_groups, [message_group1, message_group2]);
         assert_message_groups_list_equal(result.append_groups, [message_group2]);
         assert.deepEqual(result.prepend_groups, []);
@@ -323,7 +417,7 @@ run_test("merge_message_groups", () => {
         const list = build_list([message_group1]);
         const result = list.merge_message_groups([message_group2], "bottom");
 
-        assert(message2.include_sender);
+        assert.ok(message2.include_sender);
         assert_message_groups_list_equal(list._message_groups, [
             build_message_group([message1, message2]),
         ]);
@@ -360,7 +454,7 @@ run_test("merge_message_groups", () => {
         const message1 = build_message_context();
         const message_group1 = build_message_group([message1]);
 
-        const message2 = build_message_context({topic: "Test Subject 2"});
+        const message2 = build_message_context({topic: "Test subject 2"});
         const message_group2 = build_message_group([message2]);
 
         const list = build_list([message_group1]);
@@ -378,7 +472,7 @@ run_test("merge_message_groups", () => {
         const message1 = build_message_context({timestamp: 900000});
         const message_group1 = build_message_group([message1]);
 
-        const message2 = build_message_context({topic: "Test Subject 2", timestamp: 1000});
+        const message2 = build_message_context({topic: "Test subject 2", timestamp: 1000});
         const message_group2 = build_message_group([message2]);
 
         const list = build_list([message_group1]);
@@ -424,7 +518,7 @@ run_test("merge_message_groups", () => {
         const list = build_list([message_group1]);
         const result = list.merge_message_groups([message_group2], "top");
 
-        assert(message_group1.bookend_top);
+        assert.ok(message_group1.bookend_top);
         assert_message_groups_list_equal(list._message_groups, [message_group2, message_group1]);
         assert.deepEqual(result.append_groups, []);
         assert_message_groups_list_equal(result.prepend_groups, [message_group2]);
@@ -438,7 +532,7 @@ run_test("merge_message_groups", () => {
 // where new messages added via local echo have a different date from
 // the older messages.
 
-run_test("render_windows", () => {
+test("render_windows", () => {
     // We only render up to 400 messages at a time in our message list,
     // and we only change the window (which is a range, really, with
     // start/end) when the pointer moves outside of the window or close
@@ -457,9 +551,7 @@ run_test("render_windows", () => {
 
         // Stub out functionality that is not core to the rendering window
         // logic.
-        list.data.unmuted_messages = function (messages) {
-            return messages;
-        };
+        list.data.unmuted_messages = (messages) => messages;
 
         // We don't need to actually render the DOM.  The windowing logic
         // sits above that layer.
@@ -483,9 +575,7 @@ run_test("render_windows", () => {
         messages = _.range(opts.count).map((i) => ({
             id: i,
         }));
-        list.selected_idx = function () {
-            return 0;
-        };
+        list.selected_idx = () => 0;
         list.clear();
 
         list.add_messages(messages, {});
@@ -497,9 +587,7 @@ run_test("render_windows", () => {
         // a re-render.  The code avoids hasty re-renders for
         // performance reasons.
         for (const idx of _.range(start, end)) {
-            list.selected_idx = function () {
-                return idx;
-            };
+            list.selected_idx = () => idx;
             const rendered = view.maybe_rerender();
             assert.equal(rendered, false);
         }
@@ -509,9 +597,7 @@ run_test("render_windows", () => {
         const start = range[0];
         const end = range[1];
 
-        list.selected_idx = function () {
-            return idx;
-        };
+        list.selected_idx = () => idx;
         const rendered = view.maybe_rerender();
         assert.equal(rendered, true);
         assert.equal(view._render_win_start, start);

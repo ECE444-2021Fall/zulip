@@ -1,14 +1,582 @@
-# Changelog
+# API changelog
 
-This page documents changes to the Zulip Server API over time.
+This page documents changes to the Zulip Server API over time. See
+also the [Zulip release lifecycle][release-lifecycle] for background
+on why this API changelog is important, and the [Zulip server
+changelog][server-changelog].
 
-The recommended way for a client like the Zulip mobile or desktop apps
-that needs to support interaction with a wide range of different Zulip
-server versions is to check the `zulip_feature_level` parameter in the
-`/register` and `/server_settings` responses to determine which of the
-below features are supported.
+The API feature levels system used in this changelog is designed to
+make it possible to write API clients, such as the Zulip mobile and
+terminal apps, that work with a wide range of Zulip server
+versions. Every change to the Zulip API is recorded both here and in
+**Changes** entries in the API documentation for the modified
+endpoint(s).
+
+When using an API endpoint whose behavior has changed, Zulip API
+clients should check the `zulip_feature_level` field, present in the
+[`GET /server_settings`](/api/get-server-settings) and [`POST
+/register`](/api/register-queue) responses, to determine the API
+format used by the Zulip server that they are interacting with.
+
+## Changes in Zulip 5.0
+
+**Feature level 111**
+
+* [`POST /subscriptions/properties`](/api/update-subscription-settings):
+  Removed `subscription_data` from response object, replacing it with
+  `ignored_parameters_unsupported`.
+
+**Feature level 110**
+
+* [`POST /register`](/api/register-queue): Added
+  `server_web_public_streams_enabled` to the response.
+
+**Feature level 109**
+
+* [`POST /register`](/api/register-queue), [`GET
+  /events`](/api/get-events), `PATCH /realm`: Added new
+  `enable_spectator_access` realm setting.
+
+**Feature level 108**
+
+* In the mobile application authentication flow, the authenticated
+  user's `user_id` is now included in the parameters encoded in the
+  final `zulip://` redirect URL.
+
+**Feature level 107**
+* [`POST /register`](/api/register-queue), [`PATCH /settings`](/api/update-settings),
+  [`PATCH /realm/user_settings_defaults`](/api/update-realm-user-settings-defaults):
+  Added user setting `escape_navigates_to_default_view` to allow users to
+  [disable the keyboard shortcut](/help/configure-default-view) for the `Esc` key that
+  navigates the app to the default view.
+
+**Feature level 106**
+
+* [`PATCH /user/{user_id}`](/api/update-user): Removed unnecessary JSON-encoding of string
+  parameter `full_name`.
+
+**Feature level 105**
+
+* [`POST /register`](/api/register-queue), [`PATCH
+  /settings`](/api/update-settings), [`PATCH
+  /realm/user_settings_defaults`](/api/update-realm-user-settings-defaults):
+  Added three new privacy settings: `send_private_typing_notifications`,
+  `send_stream_typing_notifications`, and `send_read_receipts`.
+
+**Feature level 104**
+
+* [`PATCH /realm`]: Added `string_id` parameter for changing an
+  organization's subdomain. Currently, this is only allowed for
+  changing changing a demo organization to a normal one.
+
+**Feature level 103**
+
+* [`POST /register`](/api/register-queue): Added `create_web_public_stream_policy`
+  policy for which users can create web public streams.
+* [`PATCH /realm`]: Added support for updating `create_web_public_stream_policy`.
+* [`POST /register`](/api/register-queue): Added `can_create_web_public_streams` boolean
+  field to the response.
+
+**Feature level 102**
+
+* [`POST /register`](/api/register-queue), `PATCH /realm`: The
+  `create_stream_policy` setting was split into two settings for
+  different types of streams: `create_private_stream_policy` and
+  `create_public_stream_policy`.
+* [`POST /register`](/api/register-queue): The `create_stream_policy`
+  property was deprecated in favor of the
+  `create_private_stream_policy` and `create_public_stream_policy`
+  properties, but it still available for backwards-compatibility.
+
+**Feature level 101**
+
+* [`POST /register`](/api/register-queue), `PATCH /realm`: Replaced
+  the `allow_message_deleting` boolean field with an integer field
+  `delete_own_message_policy` defining which roles can delete messages
+  they had sent.
+
+**Feature level 100**
+
+* [`POST /register`](/api/register-queue), [`GET
+  /events`](/api/get-events): `message_content_delete_limit_seconds`
+  now represents no limit using `null`, instead of the integer 0, and 0 is
+  no longer a possible value with any meaning.
+* `PATCH /realm`: One now sets `message_content_delete_limit_seconds`
+  to no limit by passing the string `unlimited`, rather than the
+  integer 0.
+
+**Feature level 99**
+
+* [`PATCH /realm/user_settings_defaults`](/api/update-realm-user-settings-defaults),
+  `PATCH /realm`: The `default_twenty_four_hour_time` parameter to
+  `PATCH /realm` has been replaced by the `twenty_four_hour_time` parameter
+  to `PATCH /realm/user_settings_defaults`, to match the new model for
+  user preference defaults settings.
+
+* [`POST /register`](/api/register-queue): Removed `realm_default_twenty_four_hour_time`
+  from the response object. This value is now available in the
+  `twenty_four_hour_time` field of the `realm_user_settings_default` object.
+
+**Feature level 98**
+
+* [`POST /subscribe`](/api/subscribe): Added `is_web_public` parameter
+  for requesting the creation of a web-public stream.
+* [`PATCH /streams/{stream_id}`](/api/update-stream): Added
+  `is_web_public` parameter for converting a stream into a web-public stream.
+
+**Feature level 97**
+
+* `GET /realm/emoji`, `POST /realm/emoji/{emoji_name}`, [`GET
+  /events`](/api/get-events), [`POST /register`](/api/register-queue):
+  Custom emoji objects may now contain a `still_url` field, with the
+  URL of a PNG still image version of the emoji. This field will only be
+  present for animated emoji.
+
+**Feature level 96**
+
+* [`PATCH /realm/user_settings_defaults`](/api/update-realm-user-settings-defaults):
+  Added new endpoint to update default values of user settings in a realm.
+
+**Feature level 95**
+
+* [`POST /register`](/api/register-queue): Added
+  `realm_user_settings_defaults` object, containing default values of
+  personal user settings for new users in the realm.
+
+* [`GET /events`](/api/get-events): Added
+  `realm_user_settings_defaults` event type, which is sent when the
+  organization's configured default settings for new users change.
+
+**Feature level 94**
+
+* [`POST /register`](/api/register-queue): Added
+  `demo_organization_scheduled_deletion_date` field to realm data.
+
+**Feature level 93**
+
+* [`POST /register`](/api/register-queue), [`GET /user_groups`](/api/get-user-groups),
+  [`GET /events`](/api/get-events): Added `is_system_group` field to user group
+  objects.
+
+**Feature level 92**
+
+* [`GET /messages`](/api/get-messages), [`POST
+  /register`](/api/register-queue), [`GET /users`](/api/get-users),
+  [`GET /users/{user_id}`](/api/get-user), [`GET
+  /users/{email}`](/api/get-user-by-email): The `client_gravatar`
+  parameter now defaults to `true`.
+
+**Feature level 91**
+
+* `PATCH /realm`, [`PATCH /streams/{stream_id}`](/api/update-stream):
+  These endpoints now accept `"unlimited"` for `message_retention_days`,
+  replacing `"forever"` as the way to encode a retention policy where
+  messages are not automatically deleted.
+
+**Feature level 90**
+
+* [`POST /register`](/api/register-queue): The `unread_msgs` section
+  of the response no longer includes `sender_ids` in the `streams`
+  dictionaries. These were removed because no clients were interested
+  in using the data, which required substantial complexity to
+  construct correctly.
+
+**Feature level 89**
+
+* [`GET /events`](/api/get-events): Introduced the `user_settings`
+  event type, unifying and replacing the previous
+  `update_display_settings` and `update_global_notifications` event
+  types. The legacy event types are still supported for backwards
+  compatibility, but will be removed in a future release.
+* [`POST /register`](/api/register-queue): Added `user_settings` field
+  in the response, which is a dictionary containing all the user's
+  personal settings. For backwards-compatibility, individual settings
+  will still appear in the top-level response for clients don't
+  support the `user_settings_object` client capability.
+* [`POST /register`](/api/register-queue): Added the
+  `user_settings_object` property to supported `client_capabilities`.
+  When enabled, the server will not include a duplicate copy of
+  personal settings in the top-level response.
+* [`GET /events`](/api/get-events): `update_display_settings` and
+  `update_global_notifications` events now only sent to clients that
+  did not include `user_settings_object` in their
+  `client_capabilities` when the event queue was created.
+
+**Feature level 88**
+
+* [`POST /register`](/api/register-queue): Added `zulip_merge_base`
+  field to the response.
+* [`GET /events`](/api/get-events): Added new `zulip_merge_base`
+  field to the `restart` event.
+* [`GET /server_settings`](/api/get-server-settings): Added
+  `zulip_merge_base` to the responses which can be used to
+  make "About Zulip" widgets in clients.
+
+**Feature level 87**
+
+* [`PATCH /settings`](/api/update-settings): Added a new
+  `enable_drafts_synchronization` setting, which controls whether the
+  syncing drafts between different clients is enabled.
+
+* [`GET /events`](/api/get-events), [`POST /register`](/api/register-queue):
+  Added new `enable_drafts_synchronization` setting under
+  `update_display_settings`.
+
+* [`GET /drafts`](/api/get-drafts): Added new endpoint to fetch user's
+  synced drafts from the server.
+
+* [`POST /drafts`](/api/create-drafts): Added new endpoint to create
+  drafts when syncing has been enabled.
+
+* [`PATCH /drafts/{draft_id}`](/api/edit-draft): Added new endpoint
+  to edit a draft already owned by the user.
+
+* [`DELETE /drafts/{draft_id}`](/api/delete-draft): Added new endpoint
+  to delete a draft already owned by the user.
+
+**Feature level 86**
+
+* [`GET /events`](/api/get-events): Added `emoji_name`,
+  `emoji_code`, and `reaction_type` fields to `user_status` objects.
+* [`POST /register`](/api/register-queue): Added `emoji_name`,
+  `emoji_code`, and `reaction_type` fields to `user_status` objects.
+* `POST /users/me/status`: Added support for new `emoji_name`,
+  `emoji_code`, and `reaction_type` parameters.
+
+**Feature level 85**
+
+* [`POST /register`](/api/register-queue), `PATCH /realm`: Replaced `add_emoji_by_admins_only`
+  field with an integer field `add_custom_emoji_policy`.
+
+**Feature level 84**
+
+* [`POST /register`](/api/register-queue): The `enter_sends` setting
+  is now sent when `update_display_setting` is present in
+  `fetch_event_types` instead of `realm_user`.
+
+**Feature level 83**
+
+* * [`POST /register`](/api/register-queue): The `cross_realm_bots`
+  section of the response now uses the `is_system_bot` flag to
+  indicate whether the bot is a system bot.
+
+**Feature level 82**
+
+* [`PATCH /settings`](/api/update-settings) now accepts a new
+  `email_notifications_batching_period_seconds` field for setting the
+  time duration for which the server will collect email notifications
+  before sending them.
+
+**Feature level 81**
+
+* `POST /users/me/enter-sends` has been removed. The `enter_sends`
+  setting is now edited using the normal [`PATCH
+  /settings`](/api/update-settings) endpoint.
+
+**Feature level 80**
+
+* [`PATCH /settings`](/api/update-settings): The
+  `/settings/notifications` and `/settings/display` endpoints were
+  merged into the main `/settings` endpoint; now all personal settings
+  should be edited using that single endpoint. The old URLs are
+  preserved as deprecated aliases for backwards compatibility.
+
+**Feature level 79**
+
+* [`GET /users/me/subscriptions`](/api/get-subscriptions): The
+  `subscribers` field now returns user IDs if `include_subscribers` is
+  passed. Previously, this endpoint returned user display email
+  addresses in this field.
+* `GET /streams/{stream_id}/members`: This endpoint now returns user
+  IDs. Previously, it returned display email addresses.
+
+**Feature level 78**
+
+* [`PATCH /settings`](/api/update-settings): Added
+  `ignored_parameters_unsupported` field, which is a list of
+  parameters that were ignored by the endpoint, to the response
+  object.
+
+* [`PATCH /settings`](/api/update-settings): Removed `full_name` and
+  `account_email` fields from the response object.
+
+**Feature level 77**
+
+* [`GET /events`](/api/get-events): Removed `recipient_id` and
+  `sender_id` field in responses of `delete_message` event when
+  `message_type` is `private`.
+
+**Feature level 76**
+
+* [`POST /fetch_api_key`](/api/fetch-api-key), [`POST
+  /dev_fetch_api_key`](/api/dev-fetch-api-key): The HTTP status for
+  authentication errors is now 401. This was previously 403.
+* All API endpoints now use the HTTP 401 error status for API requests
+  involving a deactivated user or realm. This was previously 403.
+* Mobile push notifications now include the `mentioned_user_group_id`
+  and `mentioned_user_group_name` fields when a user group containing
+  the user is mentioned.  Previously, these were indistinguishable
+  from personal mentions (as both types have `trigger="mention"`).
+
+**Feature level 75**
+
+* [`POST /register`](/api/register-queue), `PATCH /realm`: Replaced `allow_community_topic_editing`
+  field with an integer field `edit_topic_policy`.
+
+**Feature level 74**
+
+* [`POST /register`](/api/register-queue): Added `server_needs_upgrade`
+  and `event_queue_longpoll_timeout_seconds` field when fetching
+  realm data.
+
+**Feature level 73**
+
+* [`GET /users`](/api/get-users), [`GET /users/{user_id}`](/api/get-user),
+  [`GET /users/{email}`](/api/get-user-by-email) and
+  [`GET /users/me`](/api/get-own-user): Added is `user_billing_admin` field to
+  returned user objects.
+* [`GET /events`](/api/get-events): Added `is_billing_admin` field to
+  user objects sent in `realm_user` events.
+* [`POST /register`](/api/register-queue): Added `is_billing_admin` field
+  in the user objects returned in the `realm_users` field.
+
+**Feature level 72**
+
+* [`POST /register`](/api/register-queue): Renamed `max_icon_file_size` to
+  `max_icon_file_size_mib`, `realm_upload_quota` to `realm_upload_quota_mib`
+  and `max_logo_file_size` to `max_logo_file_size_mib`.
+
+**Feature level 71**
+
+* [`GET /events`](/api/get-events): Added `is_web_public` field to
+  `stream` events changing `invite_only`.
+
+**Feature level 70**
+
+* [`POST /register`](/api/register-queue): Added new top-level
+  `server_timestamp` field when fetching presence data, to match the
+  existing presence API.
+
+Feature levels 66-69 are reserved for future use in 4.x maintenance
+releases.
 
 ## Changes in Zulip 4.0
+
+**Feature level 65**
+
+No changes; feature level used for Zulip 4.0 release.
+
+**Feature level 64**
+
+* `PATCH /streams/{stream_id}`: Removed unnecessary JSON-encoding of string
+  parameters `new_name` and `description`.
+* `PATCH /settings/display`: Removed unnecessary JSON-encoding of string
+  parameters `default_view`, `emojiset` and `timezone`.
+
+**Feature level 63**
+
+* `PATCH /settings/notifications`: Removed unnecessary JSON-encoding of string
+  parameter `notification_sound`.
+* `PATCH /settings/display`: Removed unnecessary JSON-encoding of string
+  parameter `default_language`.
+* `POST /users/me/tutorial_status`: Removed unnecessary JSON-encoding of string
+  parameter `status`.
+* `POST /realm/domains`: Removed unnecessary JSON-encoding of string
+  parameter `domain`.
+* `PATCH /default_stream_groups/{user_id}`: Removed unnecessary JSON-encoding of string
+  parameters `new_group_name` and `new_description`.
+* `POST /users/me/hotspots`: Removed unnecessary JSON-encoding of string
+  parameter `hotspot`.
+
+**Feature level 62**
+
+* Added `moderators only` option for `wildcard_mention_policy`.
+
+**Feature level 61**
+
+* Added support for inviting users as moderators to the invitation
+  endpoints.
+
+**Feature level 60**
+
+* [`POST /register`](/api/register-queue): Added a new boolean field
+  `is_moderator`, similar to the existing `is_admin`, `is_owner` and
+  `is_guest` fields, to the response.
+* [`PATCH /users/{user_id}`](/api/update-user): Added support for
+  changing a user's organization-level role to moderator.
+* API endpoints that return `role` values can now return `300`, the
+  encoding of the moderator role.
+
+**Feature level 59**
+
+* [`GET /users`](/api/get-users), [`GET /users/{user_id}`](/api/get-user),
+  [`GET /users/{email}`](/api/get-user-by-email) and
+  [`GET /users/me`](/api/get-own-user): Added `role` field to returned
+  user objects.
+* [`GET /events`](/api/get-events): Added `role` field to
+  user objects sent in `realm_user` events.
+* [`POST /register`](/api/register-queue): Added `role` field
+  in the user objects returned in the `realm_users` field.
+* [`GET /events`](/api/get-events): Added new `zulip_version` and
+  `zulip_feature_level` fields to the `restart` event.
+
+**Feature level 58**
+
+* [`POST /register`](/api/register-queue): Added the new
+  `stream_typing_notifications` property to supported
+  `client_capabilities`.
+* [`GET /events`](/api/get-events): Extended format for `typing`
+  events to support typing notifications in stream messages. These new
+  events are only sent to clients with `client_capabilities`
+  showing support for `stream_typing_notifications`.
+* [`POST /set-typing-status`](/api/set-typing-status): Added support
+  for sending typing notifications for stream messages.
+
+**Feature level 57**
+
+* [`PATCH /realm/filters/{filter_id}`](/api/update-linkifier): New
+  endpoint added to update a realm linkifier.
+
+**Feature level 56**
+
+* [`POST /register`](/api/register-queue): Added a new setting
+  `move_messages_between_streams_policy` for controlling who can
+  move messages between streams.
+
+**Feature level 55**
+
+* [`POST /register`](/api/register-queue): Added `realm_giphy_rating`
+  and `giphy_rating_options` fields.
+* `PATCH /realm`: Added `giphy_rating` parameter.
+
+**Feature level 54**
+
+* `GET /realm/filters` has been removed and replace with [`GET
+  /realm/linkifiers`](/api/get-linkifiers) which returns the data in a
+  cleaner dictionary format.
+* [`GET /events`](/api/get-events): Introduced new event type
+  `realm_linkifiers`.  The previous `realm_filters` event type is
+  still supported for backwards compatibility, but will be removed in
+  a future release.
+* [`POST /register`](/api/register-queue): The response now supports a
+  `realm_linkifiers` event type, containing the same data as the
+  legacy `realm_filters` key, with a more extensible object
+  format. The previous `realm_filters` event type is still supported
+  for backwards compatibility, but will be removed in a future
+  release. The legacy `realm_filters` key is deprecated but remains
+  available for backwards compatibility.
+
+**Feature level 53**
+
+* [`POST /register`](/api/register-queue): Added `max_topic_length`
+  and `max_message_length`, and renamed `max_stream_name_length` and
+  `max_stream_description_length` to allow clients to transparently
+  support these values changing in a future server version.
+
+**Feature level 52**
+
+* `PATCH /realm`: Removed unnecessary JSON-encoding of string
+  parameters `name`, `description`, `default_language`, and
+  `default_code_block_language`.
+
+**Feature level 51**
+
+* [`POST /register`](/api/register-queue): Added a new boolean field
+`can_invite_others_to_realm`.
+
+**Feature level 50**
+
+* [`POST /register`](/api/register-queue): Replaced `invite_by_admins_only`
+field with an integer field `invite_to_realm_policy`.
+
+**Feature level 49**
+
+* Added new [`POST /realm/playground`](/api/add-code-playground) and
+  [`DELETE /realm/playground/{playground_id}`](/api/remove-code-playground)
+  endpoints for code playgrounds.
+* [`GET /events`](/api/get-events): A new `realm_playgrounds` events
+  is sent when changes are made to a set of configured code playgrounds for
+  an organization.
+* [`POST /register`](/api/register-queue): Added a new `realm_playgrounds`
+  field, which is required to fetch the set of configured code playgrounds for
+  an organization.
+
+**Feature level 48**
+
+* [`POST /users/me/muted_users/{muted_user_id}`](/api/mute-user),
+  [`DELETE /users/me/muted_users/{muted_user_id}`](/api/unmute-user):
+  New endpoints added to mute/unmute users.
+* [`GET /events`](/api/get-events): Added new event type `muted_users`
+  which will be sent to a user when the set of users muted by them has
+  changed.
+
+**Feature level 47**
+
+* [`POST /register`](/api/register-queue): Added a new `giphy_api_key`
+  field, which is required to fetch GIFs using the GIPHY API.
+
+**Feature level 46**
+
+* [`GET /messages`](/api/get-messages) and [`GET
+  /events`](/api/get-events): The `topic_links` field now contains a
+  list of dictionaries, rather than a list of strings.
+
+**Feature level 45**
+
+* [`GET /events`](/api/get-events): Removed useless `op` field from
+  `custom_profile_fields` events.  These events contain the full set
+  of configured `custom_profile_fields` for the organization
+  regardless of what triggered the change.
+
+**Feature level 44**
+
+* [`POST /register`](/api/register-queue): extended the `unread_msgs`
+  object to include `old_unreads_missing`, which indicates whether the
+  server truncated the `unread_msgs` due to excessive total unread
+  messages.
+
+**Feature level 43**
+
+* [`GET /users/{user_id_or_email}/presence`]: Added support for
+ passing the `user_id` to identify the target user.
+
+**Feature level 42**
+
+* `PATCH /settings/display`: Added a new `default_view` setting allowing
+  the user to [set the default view](/help/configure-default-view).
+
+**Feature level 41**
+
+* [`GET /events`](/api/get-events): Removed `name` field from update
+  subscription events.
+
+**Feature level 40**
+
+* [`GET /events`](/api/get-events): Removed `email` field from update
+  subscription events.
+
+**Feature level 39**
+
+* Added new [GET /users/{email}](/api/get-user-by-email) endpoint.
+
+**Feature level 38**
+
+* [`POST /register`](/api/register-queue): Increased
+  `realm_community_topic_editing_limit_seconds` time limit value
+  to 259200s (3 days).
+
+**Feature level 37**
+
+* Consistently provide `subscribers` in stream data when
+  clients register for subscriptions with `include_subscribers`,
+  even if the user can't access subscribers.
+
+**Feature level 36**
+
+* [`POST /users`](/api/create-user): Restricted access to organization
+  administrators with the `can_create_users` permission.
+* [Error handling](/api/rest-error-handling): The `code` property will
+  not be present in errors due to rate limits.
 
 **Feature level 35**
 
@@ -103,6 +671,9 @@ No changes; feature level used for Zulip 3.0 release.
 * `GET /invites`: Now encodes the user ID of the person who created
    the invitation as `invited_by_user_id`, replacing the previous
    `ref` field (which had that user's Zulip display email address).
+* [`POST /register`](/api/register-queue): The encoding of an
+  unlimited `realm_message_retention_days` in the response was changed
+  from `null` to `-1`.
 
 **Feature level 21**
 
@@ -369,3 +940,6 @@ No changes; feature level used for Zulip 3.0 release.
 * [`POST /register`](/api/register-queue): Added `slim_presence`
   parameter.  Changes the format of presence events, but is still
   being changed and should not be used by clients.
+
+[server-changelog]: https://zulip.readthedocs.io/en/latest/overview/changelog.html
+[release-lifecycle]: https://zulip.readthedocs.io/en/latest/overview/release-lifecycle.html

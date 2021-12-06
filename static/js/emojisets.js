@@ -4,6 +4,8 @@ import twitter_sheet from "emoji-datasource-twitter/img/twitter/sheets-256/64.pn
 
 import octopus_url from "../generated/emoji/images-google-64/1f419.png";
 
+import {user_settings} from "./user_settings";
+
 import google_blob_css from "!style-loader?injectType=lazyStyleTag!css-loader!../generated/emoji-styles/google-blob-sprite.css";
 import google_css from "!style-loader?injectType=lazyStyleTag!css-loader!../generated/emoji-styles/google-sprite.css";
 import twitter_css from "!style-loader?injectType=lazyStyleTag!css-loader!../generated/emoji-styles/twitter-sprite.css";
@@ -14,7 +16,7 @@ const emojisets = new Map([
     ["twitter", {css: twitter_css, sheet: twitter_sheet}],
 ]);
 
-// For `text` emojiset we fallback to `google-blob` emojiset
+// For `text` emoji set we fallback to `google-blob` emoji set
 // for displaying emojis in emoji picker and typeahead.
 emojisets.set("text", emojisets.get("google-blob"));
 
@@ -39,7 +41,7 @@ export async function select(name) {
 }
 
 export function initialize() {
-    select(page_params.emojiset);
+    select(user_settings.emojiset);
 
     // Load the octopus image in the background, so that the browser
     // will cache it for later use.  Note that we hardcode the octopus

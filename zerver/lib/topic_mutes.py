@@ -3,33 +3,44 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from django.utils.timezone import now as timezone_now
 from sqlalchemy.sql import ClauseElement, and_, column, not_, or_
+from sqlalchemy.types import Integer
 
 from zerver.lib.timestamp import datetime_to_timestamp
 from zerver.lib.topic import topic_match_sa
-from zerver.models import MutedTopic, UserProfile, get_stream
+from zerver.models import UserProfile, UserTopic, get_stream
 
 
-def get_topic_mutes(user_profile: UserProfile) -> List[Tuple[str, str, float]]:
-    rows = MutedTopic.objects.filter(
-        user_profile=user_profile
-    ).values(
-        'stream__name',
-        'topic_name',
-        'date_muted',
+def get_topic_mutes(
+    user_profile: UserProfile, include_deactivated: bool = False
+) -> List[Tuple[str, str, float]]:
+    query = UserTopic.objects.filter(user_profile=user_profile, visibility_policy=UserTopic.MUTED)
+    # Exclude muted topics that are part of deactivated streams unless
+    # explicitly requested.
+    if not include_deactivated:
+        query = query.filter(stream__deactivated=False)
+    rows = query.values(
+        "stream__name",
+        "topic_name",
+        "last_updated",
     )
     return [
-        (row['stream__name'], row['topic_name'], datetime_to_timestamp(row['date_muted']))
+        (row["stream__name"], row["topic_name"], datetime_to_timestamp(row["last_updated"]))
         for row in rows
     ]
 
-def set_topic_mutes(user_profile: UserProfile, muted_topics: List[List[str]],
-                    date_muted: Optional[datetime.datetime]=None) -> None:
-    '''
-    This is only used in tests.
-    '''
 
-    MutedTopic.objects.filter(
+def set_topic_mutes(
+    user_profile: UserProfile,
+    muted_topics: List[List[str]],
+    date_muted: Optional[datetime.datetime] = None,
+) -> None:
+    """
+    This is only used in tests.
+    """
+
+    UserTopic.objects.filter(
         user_profile=user_profile,
+        visibility_policy=UserTopic.MUTED,
     ).delete()
 
     if date_muted is None:
@@ -46,39 +57,55 @@ def set_topic_mutes(user_profile: UserProfile, muted_topics: List[List[str]],
             date_muted=date_muted,
         )
 
-def add_topic_mute(user_profile: UserProfile, stream_id: int, recipient_id: int, topic_name: str,
-                   date_muted: Optional[datetime.datetime]=None) -> None:
+
+def add_topic_mute(
+    user_profile: UserProfile,
+    stream_id: int,
+    recipient_id: int,
+    topic_name: str,
+    date_muted: Optional[datetime.datetime] = None,
+) -> None:
     if date_muted is None:
         date_muted = timezone_now()
-    MutedTopic.objects.create(
+    UserTopic.objects.create(
         user_profile=user_profile,
         stream_id=stream_id,
         recipient_id=recipient_id,
         topic_name=topic_name,
-        date_muted=date_muted,
+        last_updated=date_muted,
+        visibility_policy=UserTopic.MUTED,
     )
 
+
 def remove_topic_mute(user_profile: UserProfile, stream_id: int, topic_name: str) -> None:
-    row = MutedTopic.objects.get(
+    row = UserTopic.objects.get(
         user_profile=user_profile,
         stream_id=stream_id,
         topic_name__iexact=topic_name,
+        visibility_policy=UserTopic.MUTED,
     )
     row.delete()
 
+
 def topic_is_muted(user_profile: UserProfile, stream_id: int, topic_name: str) -> bool:
-    is_muted = MutedTopic.objects.filter(
+    is_muted = UserTopic.objects.filter(
         user_profile=user_profile,
         stream_id=stream_id,
         topic_name__iexact=topic_name,
+        visibility_policy=UserTopic.MUTED,
     ).exists()
     return is_muted
 
-def exclude_topic_mutes(conditions: List[ClauseElement],
-                        user_profile: UserProfile,
-                        stream_id: Optional[int]) -> List[ClauseElement]:
-    query = MutedTopic.objects.filter(
+
+def exclude_topic_mutes(
+    conditions: List[ClauseElement], user_profile: UserProfile, stream_id: Optional[int]
+) -> List[ClauseElement]:
+    # Note: Unlike get_topic_mutes, here we always want to
+    # consider topics in deactivated streams, so they are
+    # never filtered from the query in this method.
+    query = UserTopic.objects.filter(
         user_profile=user_profile,
+        visibility_policy=UserTopic.MUTED,
     )
 
     if stream_id is not None:
@@ -87,8 +114,8 @@ def exclude_topic_mutes(conditions: List[ClauseElement],
         query = query.filter(stream_id=stream_id)
 
     query = query.values(
-        'recipient_id',
-        'topic_name',
+        "recipient_id",
+        "topic_name",
     )
     rows = list(query)
 
@@ -96,28 +123,29 @@ def exclude_topic_mutes(conditions: List[ClauseElement],
         return conditions
 
     def mute_cond(row: Dict[str, Any]) -> ClauseElement:
-        recipient_id = row['recipient_id']
-        topic_name = row['topic_name']
-        stream_cond = column("recipient_id") == recipient_id
+        recipient_id = row["recipient_id"]
+        topic_name = row["topic_name"]
+        stream_cond = column("recipient_id", Integer) == recipient_id
         topic_cond = topic_match_sa(topic_name)
         return and_(stream_cond, topic_cond)
 
     condition = not_(or_(*list(map(mute_cond, rows))))
     return [*conditions, condition]
 
+
 def build_topic_mute_checker(user_profile: UserProfile) -> Callable[[int, str], bool]:
-    rows = MutedTopic.objects.filter(
-        user_profile=user_profile
+    rows = UserTopic.objects.filter(
+        user_profile=user_profile, visibility_policy=UserTopic.MUTED
     ).values(
-        'recipient_id',
-        'topic_name',
+        "recipient_id",
+        "topic_name",
     )
     rows = list(rows)
 
     tups = set()
     for row in rows:
-        recipient_id = row['recipient_id']
-        topic_name = row['topic_name']
+        recipient_id = row["recipient_id"]
+        topic_name = row["topic_name"]
         tups.add((recipient_id, topic_name.lower()))
 
     def is_muted(recipient_id: int, topic: str) -> bool:

@@ -1,6 +1,6 @@
 import ErrorStackParser from "error-stack-parser";
 import $ from "jquery";
-import StackFrame from "stackframe";
+import type StackFrame from "stackframe";
 import StackTraceGPS from "stacktrace-gps";
 
 import render_blueslip_stacktrace from "../templates/blueslip_stacktrace.hbs";
@@ -82,14 +82,14 @@ async function get_context(location: StackFrame): Promise<NumberedLine[] | undef
 }
 
 export async function display_stacktrace(error: string, stack: string): Promise<void> {
-    const ex = new Error();
+    const ex = new Error("dummy");
     ex.stack = stack;
 
     const stackframes: CleanStackFrame[] = await Promise.all(
         ErrorStackParser.parse(ex).map(async (stack_frame: ErrorStackParser.StackFrame) => {
             // Work around mistake in ErrorStackParser.StackFrame definition
             // https://github.com/stacktracejs/error-stack-parser/pull/54
-            let location = (stack_frame as unknown) as StackFrame;
+            let location = stack_frame as unknown as StackFrame;
             try {
                 location = await stack_trace_gps.getMappedLocation(location);
             } catch {

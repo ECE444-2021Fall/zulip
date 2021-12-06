@@ -22,7 +22,7 @@ priority.
   [excluded from mobile push notifications][redact-content],
   to avoid displaying message content on locked mobile screens, and to
   comply with strict compliance policies such as the USA’s HIPAA standards.
-- Zulip operates a HackerOne bug bounty program to reward hackers for
+- Zulip operates a HackerOne disclosure program to reward hackers for
   finding and responsibly reporting security vulnerabilities in Zulip.  Our
   [completely open source codebase](https://github.com/zulip/zulip) means
   that HackerOne’s white-hat hackers can audit Zulip for potential security
@@ -53,7 +53,7 @@ priority.
 - Zulip also supports customizing whether non-admins can
   [create streams](/help/configure-who-can-create-streams),
   [invite to streams](/help/configure-who-can-invite-to-streams),
-  [add custom emoji](/help/only-allow-admins-to-add-emoji),
+  [add custom emoji](/help/custom-emoji#change-who-can-add-custom-emoji),
   [add integrations and bots](/help/restrict-bot-creation),
   [edit or delete messages](/help/configure-message-editing-and-deletion),
   and more.

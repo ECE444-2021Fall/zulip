@@ -2,14 +2,15 @@
 
 const {strict: assert} = require("assert");
 
-const {set_global, zrequire} = require("../zjsunit/namespace");
+const {mock_esm, zrequire} = require("../zjsunit/namespace");
 const {run_test} = require("../zjsunit/test");
+const blueslip = require("../zjsunit/zblueslip");
 
-zrequire("submessage");
+const channel = mock_esm("../../static/js/channel");
+const message_store = mock_esm("../../static/js/message_store");
+const widgetize = mock_esm("../../static/js/widgetize");
 
-set_global("channel", {});
-set_global("widgetize", {});
-set_global("message_store", {});
+const submessage = zrequire("submessage");
 
 run_test("get_message_events", () => {
     let msg = {};
@@ -46,7 +47,7 @@ run_test("make_server_callback", () => {
     const callback = submessage.make_server_callback(message_id);
     let was_posted;
 
-    channel.post = function (opts) {
+    channel.post = (opts) => {
         was_posted = true;
         assert.deepEqual(opts, {
             url: "/json/submessage",
@@ -63,7 +64,28 @@ run_test("make_server_callback", () => {
         data: {foo: 32},
     });
 
-    assert(was_posted);
+    assert.ok(was_posted);
+});
+
+run_test("check sender", ({override}) => {
+    const message_id = 101;
+
+    const message = {
+        id: message_id,
+        sender_id: 1,
+        submessages: [{sender_id: 2, content: "{}"}],
+    };
+
+    override(message_store, "get", (arg) => {
+        assert.equal(arg, message_id);
+        return message;
+    });
+
+    blueslip.expect("warn", "User 2 tried to hijack message 101");
+
+    submessage.process_submessages({
+        message_id,
+    });
 });
 
 run_test("handle_event", () => {

@@ -1,23 +1,17 @@
-"use strict";
+import $ from "jquery";
 
-const render_input_pill = require("../templates/input_pill.hbs");
+import render_input_pill from "../templates/input_pill.hbs";
+
+import * as blueslip from "./blueslip";
+import * as compose from "./compose";
+import * as ui_util from "./ui_util";
 
 // See https://zulip.readthedocs.io/en/latest/subsystems/input-pills.html
-exports.random_id = function () {
+export function random_id() {
     return Math.random().toString(16);
-};
+}
 
-exports.create = function (opts) {
-    // a dictionary of the key codes that are associated with each key
-    // to make if/else more human readable.
-    const KEY = {
-        ENTER: 13,
-        BACKSPACE: 8,
-        LEFT_ARROW: 37,
-        RIGHT_ARROW: 39,
-        COMMA: 188,
-    };
-
+export function create(opts) {
     if (!opts.container) {
         blueslip.error("Pill needs container.");
         return undefined;
@@ -84,10 +78,15 @@ exports.create = function (opts) {
         // This is generally called by typeahead logic, where we have all
         // the data we need (as opposed to, say, just a user-typed email).
         appendValidatedData(item) {
-            const id = exports.random_id();
+            const id = random_id();
 
             if (!item.display_value) {
                 blueslip.error("no display_value returned");
+                return;
+            }
+
+            if (!item.type) {
+                blueslip.error("no type defined for the item");
                 return;
             }
 
@@ -104,6 +103,7 @@ exports.create = function (opts) {
                 id: payload.id,
                 display_value: item.display_value,
                 has_image,
+                deactivated: item.deactivated,
             };
 
             if (has_image) {
@@ -198,15 +198,12 @@ exports.create = function (opts) {
 
             // this is an array to push all the errored values to, so it's drafts
             // of pills for the user to fix.
-            const drafts = [];
-
-            pills.forEach((pill) => {
-                // if this returns `false`, it erroed and we should push it to
-                // the draft pills.
-                if (funcs.appendPill(pill) === false) {
-                    drafts.push(pill);
-                }
-            });
+            const drafts = pills.filter(
+                (pill) =>
+                    // if this returns `false`, it erroed and we should push it to
+                    // the draft pills.
+                    funcs.appendPill(pill) === false,
+            );
 
             store.$input.text(drafts.join(", "));
             // when using the `text` insertion feature with jQuery the caret is
@@ -224,6 +221,10 @@ exports.create = function (opts) {
             return store.pills.find((pill) => pill.id === id);
         },
 
+        _get_pills_for_testing() {
+            return store.pills;
+        },
+
         items() {
             return store.pills.map((pill) => pill.item);
         },
@@ -236,11 +237,9 @@ exports.create = function (opts) {
         },
     };
 
-    (function events() {
+    {
         store.$parent.on("keydown", ".input", (e) => {
-            const char = e.keyCode || e.charCode;
-
-            if (char === KEY.ENTER) {
+            if (e.key === "Enter") {
                 // regardless of the value of the input, the ENTER keyword
                 // should be ignored in favor of keeping content to one line
                 // always.
@@ -269,7 +268,7 @@ exports.create = function (opts) {
             // if the user backspaces and there is input, just do normal char
             // deletion, otherwise delete the last pill in the sequence.
             if (
-                char === KEY.BACKSPACE &&
+                e.key === "Backspace" &&
                 (funcs.value(e.target).length === 0 || window.getSelection().anchorOffset === 0)
             ) {
                 e.preventDefault();
@@ -282,15 +281,13 @@ exports.create = function (opts) {
             // should switch to focus the last pill in the list.
             // the rest of the events then will be taken care of in the function
             // below that handles events on the ".pill" class.
-            if (char === KEY.LEFT_ARROW) {
-                if (window.getSelection().anchorOffset === 0) {
-                    store.$parent.find(".pill").last().trigger("focus");
-                }
+            if (e.key === "ArrowLeft" && window.getSelection().anchorOffset === 0) {
+                store.$parent.find(".pill").last().trigger("focus");
             }
 
             // Typing of the comma is prevented if the last field doesn't validate,
             // as well as when the new pill is created.
-            if (char === KEY.COMMA) {
+            if (e.key === ",") {
                 // if the pill is successful, it will create the pill and clear
                 // the input.
                 if (funcs.appendPill(store.$input.text().trim()) !== false) {
@@ -305,22 +302,25 @@ exports.create = function (opts) {
         // handle events while hovering on ".pill" elements.
         // the three primary events are next, previous, and delete.
         store.$parent.on("keydown", ".pill", (e) => {
-            const char = e.keyCode || e.charCode;
-
             const $pill = store.$parent.find(".pill:focus");
 
-            if (char === KEY.LEFT_ARROW) {
-                $pill.prev().trigger("focus");
-            } else if (char === KEY.RIGHT_ARROW) {
-                $pill.next().trigger("focus");
-            } else if (char === KEY.BACKSPACE) {
-                const $next = $pill.next();
-                const id = $pill.data("id");
-                funcs.removePill(id);
-                $next.trigger("focus");
-                // the "Backspace" key in Firefox will go back a page if you do
-                // not prevent it.
-                e.preventDefault();
+            switch (e.key) {
+                case "ArrowLeft":
+                    $pill.prev().trigger("focus");
+                    break;
+                case "ArrowRight":
+                    $pill.next().trigger("focus");
+                    break;
+                case "Backspace": {
+                    const $next = $pill.next();
+                    const id = $pill.data("id");
+                    funcs.removePill(id);
+                    $next.trigger("focus");
+                    // the "Backspace" key in Firefox will go back a page if you do
+                    // not prevent it.
+                    e.preventDefault();
+                    break;
+                }
             }
         });
 
@@ -356,6 +356,8 @@ exports.create = function (opts) {
 
             funcs.removePill(id);
             $next.trigger("focus");
+
+            compose.update_fade();
         });
 
         store.$parent.on("click", function (e) {
@@ -373,7 +375,7 @@ exports.create = function (opts) {
             );
             e.preventDefault();
         });
-    })();
+    }
 
     // the external, user-accessible prototype.
     const prototype = {
@@ -398,9 +400,8 @@ exports.create = function (opts) {
         clear: funcs.removeAllPills.bind(funcs),
         clear_text: funcs.clear_text,
         is_pending: funcs.is_pending,
+        _get_pills_for_testing: funcs._get_pills_for_testing,
     };
 
     return prototype;
-};
-
-window.input_pill = exports;
+}

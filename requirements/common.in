@@ -3,7 +3,7 @@
 # and requirements/prod.txt.
 # See requirements/README.md for more detail.
 # Django itself
-Django==2.2.*
+Django[argon2]==3.2.*
 
 # needed for Literal, TypedDict
 typing-extensions
@@ -16,33 +16,33 @@ Jinja2
 
 # Needed for Markdown processing
 Markdown
-importlib-metadata;python_version<"3.8"  # for Markdown
+importlib-metadata;python_version<"3.10"  # for Markdown
 Pygments
 jsx-lexer
 
 # Needed for manage.py
 ipython
 
+# Needed for compatibility with ipython < 7.20, which we cannot
+# install on Python <3.7; see
+# https://github.com/ipython/ipython/issues/12740
+jedi<0.18.0
+
 # Needed for image processing
 Pillow
 
 # Needed for building complex DB queries
-SQLAlchemy
-
-# Needed for password hashing
-argon2-cffi
+SQLAlchemy==1.4.*
 
 # Needed for S3 file uploads
 boto3
+mypy-boto3-s3
 
 # Needed for integrations
 defusedxml
 
 # Needed for LDAP support
-# Using our fork for the feature of searching users by email.
-# https://github.com/django-auth-ldap/django-auth-ldap/pull/150 for monitoring
-# progress on merging this upstream.
-https://github.com/zulip/django-auth-ldap/archive/e26d0ef2a7ff77ab3fdd7b6578a76081f780778c.zip#egg=django-auth-ldap==2.0.0zulip1
+django-auth-ldap
 
 # Django extension providing bitfield support
 django-bitfield
@@ -55,12 +55,8 @@ python-gcm
 
 # Needed for the email mirror
 html2text
-httplib2
-# Forked to avoid pulling in scipy: https://github.com/mailgun/talon/issues/130
-https://github.com/zulip/talon/archive/7d8bdc4dbcfcc5a73298747293b99fe53da55315.zip#egg=talon==1.2.10.zulip1
-
-# Needed for HipChat import
-hypchat
+# Forked to avoid pulling in scipy: https://github.com/mailgun/talon/pull/200
+https://github.com/zulip/talon/archive/1711705c952806d4a704c7dbf58f21db8e11756a.zip#egg=talon-core==1.4.8.zulip1&subdirectory=talon-core
 
 # Needed for inlining the CSS in emails
 premailer
@@ -75,7 +71,7 @@ markdown-include
 pika
 
 # Needed to access our database
-psycopg2 --no-binary psycopg2
+psycopg2
 
 # Needed for memcached usage
 python-binary-memcached
@@ -101,11 +97,8 @@ tornado==4.*  # https://github.com/zulip/zulip/issues/8913
 # Fast JSON parser
 orjson
 
-# Django extension for serving webpack modules
-django-webpack4-loader
-
 # Needed for iOS push notifications
-apns2
+aioapns
 
 python-twitter
 
@@ -114,9 +107,6 @@ polib
 
 # Needed for cloning virtual environments
 virtualenv-clone
-
-# Needed for reading json as stream
-ijson
 
 # Needed for link preview
 beautifulsoup4
@@ -130,15 +120,15 @@ python-magic
 # the version from Git rather than a PyPI release. Keeping everything in
 # one repository simplifies the process of implementing and documenting
 # new bots for new contributors.
-https://github.com/zulip/python-zulip-api/archive/0.7.0.zip/#egg=zulip==0.7.0_git&subdirectory=zulip
-https://github.com/zulip/python-zulip-api/archive/0.7.0.zip/#egg=zulip_bots==0.7.0+git&subdirectory=zulip_bots
+https://github.com/zulip/python-zulip-api/archive/0.8.1.zip#egg=zulip==0.8.1+git&subdirectory=zulip
+https://github.com/zulip/python-zulip-api/archive/0.8.1.zip#egg=zulip_bots==0.8.1+git&subdirectory=zulip_bots
 
 # Used for Hesiod lookups, etc.
 py3dns
 
 # Install Python Social Auth
 social-auth-app-django
-https://github.com/python-social-auth/social-core/archive/3.4.0.zip/#egg=social-auth-core[azuread,saml]==3.4.0
+social-auth-core[azuread,openidconnect,saml]
 
 # For encrypting a login token to the desktop app
 cryptography
@@ -147,9 +137,7 @@ cryptography
 lxml
 
 # Needed for 2-factor authentication
-django-two-factor-auth[phonenumberslite]
-
-twilio
+django-two-factor-auth[call,phonenumberslite,sms]
 
 # Needed for processing payments (in corporate)
 stripe
@@ -162,10 +150,6 @@ disposable-email-domains
 
 # Needed for parsing YAML with JSON references from the REST API spec files
 jsonref
-
-# Needed for signing thumbnail requests so that they can be authenticated on the
-# other end.
-libthumbor
 
 # Needed for string matching in AlertWordProcessor
 pyahocorasick
@@ -192,3 +176,24 @@ tlds
 
 # Unicode Collation Algorithm for sorting multilingual strings
 pyuca
+
+# Handle connection retries with exponential backoff
+backoff
+
+# Needed for reading bson files in rocketchat import tool
+pymongo
+
+# Non-backtracking regular expressions
+google-re2
+
+# For querying recursive group membership
+django-cte
+
+# SCIM integration
+django-scim2
+
+# CSS manipulation
+soupsieve
+
+# Circuit-breaking for outgoing services
+circuitbreaker

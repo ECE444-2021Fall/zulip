@@ -21,6 +21,7 @@ First, export your data from Gitter.
    Zulip.
 
     !!! warn ""
+
         **Note:** You'll need a Gitter API token to export data. You can get this
         token by following the instructions in the "**Getting Started**" section of the
         [Gitter documentation](https://developer.gitter.im/docs/).
@@ -49,10 +50,10 @@ the most common configuration, run the following commands:
 
 ```
 cd /home/zulip/deployments/current
-supervisorctl stop all  # Stop the Zulip server
+./scripts/stop-server
 ./manage.py convert_gitter_data gitter_data.json --output converted_gitter_data
 ./manage.py import '' converted_gitter_data
-./scripts/restart-server
+./scripts/start-server
 ```
 
 This could take several minutes to run, depending on how much data

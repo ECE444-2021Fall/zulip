@@ -1,10 +1,12 @@
-"use strict";
-
-const people = require("./people");
+import * as hash_util from "./hash_util";
+import * as people from "./people";
+import * as stream_data from "./stream_data";
+import * as user_groups from "./user_groups";
+import {user_settings} from "./user_settings";
 
 /*
     This config is in a separate file for partly
-    tactical reasons.  We want the webapp to
+    tactical reasons.  We want the web app to
     configure this one way, but we don't want to
     share this code with mobile.
 
@@ -24,12 +26,13 @@ const people = require("./people");
     when the lookups fail.
 */
 
-exports.get_helpers = () => ({
+export const get_helpers = () => ({
     // user stuff
     get_actual_name_from_user_id: people.get_actual_name_from_user_id,
     get_user_id_from_name: people.get_user_id_from_name,
     is_valid_full_name_and_user_id: people.is_valid_full_name_and_user_id,
     my_user_id: people.my_current_user_id,
+    is_valid_user_id: people.is_known_user_id,
 
     // user groups
     get_user_group_from_name: user_groups.get_user_group_from_name,
@@ -41,5 +44,5 @@ exports.get_helpers = () => ({
     stream_topic_hash: hash_util.by_stream_topic_uri,
 
     // settings
-    should_translate_emoticons: () => page_params.translate_emoticons,
+    should_translate_emoticons: () => user_settings.translate_emoticons,
 });

@@ -1,4 +1,6 @@
-"use strict";
+import $ from "jquery";
+
+import * as common from "../common";
 
 $(() => {
     $("body").on("click", ".scrub-realm-button", function (e) {

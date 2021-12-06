@@ -1,8 +1,11 @@
-"use strict";
+import $ from "jquery";
 
-const settings_config = require("./settings_config");
+import * as channel from "./channel";
+import {page_params} from "./page_params";
+import * as settings_data from "./settings_data";
+import * as upload_widget from "./upload_widget";
 
-exports.build_realm_logo_widget = function (upload_function, is_night) {
+export function build_realm_logo_widget(upload_function, is_night) {
     let logo_section_id = "#realm-day-logo-upload-widget";
     let logo_source = page_params.realm_logo_source;
 
@@ -45,9 +48,9 @@ exports.build_realm_logo_widget = function (upload_function, is_night) {
         file_input_error_elem.expectOne(),
         upload_button_elem.expectOne(),
         upload_function,
-        page_params.max_logo_file_size,
+        page_params.max_logo_file_size_mib,
     );
-};
+}
 
 function change_logo_delete_button(logo_source, logo_delete_button, file_input) {
     if (logo_source === "U") {
@@ -60,16 +63,16 @@ function change_logo_delete_button(logo_source, logo_delete_button, file_input) 
     }
 }
 
-exports.rerender = function () {
+export function render() {
     const file_input = $("#realm-day-logo-upload-widget .image_file_input");
     const night_file_input = $("#realm-night-logo-upload-widget .realm-logo-file-input");
     $("#realm-day-logo-upload-widget .image-block").attr("src", page_params.realm_logo_url);
 
     if (page_params.realm_night_logo_source === "D" && page_params.realm_logo_source !== "D") {
-        // If no night mode logo is uploaded but a day mode one
-        // is, use the day mode one; this handles the common case
+        // If no dark theme logo is uploaded but a light theme one
+        // is, use the light theme one; this handles the common case
         // of transparent background logos that look good on both
-        // night and day themes.  See also similar code in admin.js.
+        // dark and light themes.  See also similar code in admin.js.
 
         $("#realm-night-logo-upload-widget .image-block").attr("src", page_params.realm_logo_url);
     } else {
@@ -79,14 +82,7 @@ exports.rerender = function () {
         );
     }
 
-    if (
-        (page_params.color_scheme === settings_config.color_scheme_values.night.code &&
-            page_params.realm_night_logo_source !== "D") ||
-        (page_params.color_scheme === settings_config.color_scheme_values.automatic.code &&
-            page_params.realm_night_logo_source !== "D" &&
-            window.matchMedia &&
-            window.matchMedia("(prefers-color-scheme: dark)").matches)
-    ) {
+    if (settings_data.using_dark_theme() && page_params.realm_night_logo_source !== "D") {
         $("#realm-logo").attr("src", page_params.realm_night_logo_url);
     } else {
         $("#realm-logo").attr("src", page_params.realm_logo_url);
@@ -102,6 +98,4 @@ exports.rerender = function () {
         $("#realm-night-logo-upload-widget .image-delete-button"),
         night_file_input,
     );
-};
-
-window.realm_logo = exports;
+}

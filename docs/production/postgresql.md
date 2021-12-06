@@ -1,15 +1,15 @@
-PostgreSQL database details
-=========================
+# PostgreSQL database details
 
-Starting with Zulip 3.0, Zulip supports using PostgreSQL 10, 11, or 12,
-defaulting to PostgreSQL 12 for new installations.
+Starting with Zulip 3.0, Zulip supports a range of PostgreSQL
+versions. PostgreSQL 14 is the current default for new installations;
+PostgreSQL 10, 11, 12, and 13 are all supported.
 
 Previous versions of Zulip used whatever version of PostgreSQL was
 included with the base operating system (E.g. PostgreSQL 12 on Ubuntu
-Focal, 10 on Ubuntu Bionic, and 9.6 on Ubuntu Xenial).  We recommend
-that installations currently using older PostgreSQL releases [upgrade to
-PostgreSQL 12][upgrade-postgresql], as may drop support for older PostgreSQL
-in a future release.
+Focal, 10 on Ubuntu Bionic, and 9.6 on Ubuntu Xenial). We recommend
+that installations currently using older PostgreSQL releases [upgrade
+to PostgreSQL 14][upgrade-postgresql], as we may drop support for
+older PostgreSQL in a future release.
 
 [upgrade-postgresql]: ../production/upgrade-or-modify.html#upgrading-postgresql
 
@@ -31,34 +31,34 @@ called "zulip" in your database server. You can configure these
 options in `/etc/zulip/settings.py` (the below descriptions are from the
 PostgreSQL documentation):
 
-* `REMOTE_POSTGRES_HOST`: Name or IP address of the remote host
-* `REMOTE_POSTGRES_SSLMODE`: SSL Mode used to connect to the server,
+- `REMOTE_POSTGRES_HOST`: Name or IP address of the remote host
+- `REMOTE_POSTGRES_SSLMODE`: SSL Mode used to connect to the server,
   different options you can use are:
-  * disable: I don't care about security, and I don't want to pay the
+  - disable: I don't care about security, and I don't want to pay the
     overhead of encryption.
-  * allow: I don't care about security, but I will pay the overhead of
+  - allow: I don't care about security, but I will pay the overhead of
     encryption if the server insists on it.
-  * prefer: I don't care about encryption, but I wish to pay the
+  - prefer: I don't care about encryption, but I wish to pay the
     overhead of encryption if the server supports it.
-  * require: I want my data to be encrypted, and I accept the
+  - require: I want my data to be encrypted, and I accept the
     overhead. I trust that the network will make sure I always connect
     to the server I want.
-  * verify-ca: I want my data encrypted, and I accept the overhead. I
+  - verify-ca: I want my data encrypted, and I accept the overhead. I
     want to be sure that I connect to a server that I trust.
-  * verify-full: I want my data encrypted, and I accept the
+  - verify-full: I want my data encrypted, and I accept the
     overhead. I want to be sure that I connect to a server I trust,
     and that it's the one I specify.
 
 Then you should specify the password of the user zulip for the
 database in /etc/zulip/zulip-secrets.conf:
 
-```
+```ini
 postgres_password = xxxx
 ```
 
 Finally, you can stop your database on the Zulip server via:
 
-```
+```bash
 sudo service postgresql stop
 sudo update-rc.d postgresql disable
 ```
@@ -75,7 +75,7 @@ can give you some tips.
 When debugging PostgreSQL issues, in addition to the standard `pg_top`
 tool, often it can be useful to use this query:
 
-```
+```postgresql
 SELECT procpid,waiting,query_start,current_query FROM pg_stat_activity ORDER BY procpid;
 ```
 
@@ -83,20 +83,21 @@ which shows the currently running backends and their activity. This is
 similar to the pg_top output, with the added advantage of showing the
 complete query, which can be valuable in debugging.
 
-To stop a runaway query, you can run `SELECT pg_cancel_backend(pid
-int)` or `SELECT pg_terminate_backend(pid int)` as the 'postgres'
-user. The former cancels the backend's current query and the latter
-terminates the backend process. They are implemented by sending SIGINT
-and SIGTERM to the processes, respectively.  We recommend against
-sending a PostgreSQL process SIGKILL. Doing so will cause the database
-to kill all current connections, roll back any pending transactions,
-and enter recovery mode.
+To stop a runaway query, you can run
+`SELECT pg_cancel_backend(pid int)` or
+`SELECT pg_terminate_backend(pid int)` as the 'postgres' user. The
+former cancels the backend's current query and the latter terminates
+the backend process. They are implemented by sending SIGINT and
+SIGTERM to the processes, respectively. We recommend against sending
+a PostgreSQL process SIGKILL. Doing so will cause the database to kill
+all current connections, roll back any pending transactions, and enter
+recovery mode.
 
 #### Stopping the Zulip PostgreSQL database
 
 To start or stop PostgreSQL manually, use the pg_ctlcluster command:
 
-```
+```bash
 pg_ctlcluster 9.1 [--force] main {start|stop|restart|reload}
 ```
 
@@ -106,15 +107,15 @@ prohibitively long. If you use the --force option with stop,
 pg_ctlcluster will try to use the "fast" mode for shutting
 down. "Fast" mode is described by the manpage thusly:
 
-  With the --force option the "fast" mode is used which rolls back all
-  active transactions, disconnects clients immediately and thus shuts
-  down cleanly. If that does not work, shutdown is attempted again in
-  "immediate" mode, which can leave the cluster in an inconsistent state
-  and thus will lead to a recovery run at the next start. If this still
-  does not help, the postmaster process is killed. Exits with 0 on
-  success, with 2 if the server is not running, and with 1 on other
-  failure conditions. This mode should only be used when the machine is
-  about to be shut down.
+> With the --force option the "fast" mode is used which rolls back all
+> active transactions, disconnects clients immediately and thus shuts
+> down cleanly. If that does not work, shutdown is attempted again in
+> "immediate" mode, which can leave the cluster in an inconsistent state
+> and thus will lead to a recovery run at the next start. If this still
+> does not help, the postmaster process is killed. Exits with 0 on
+> success, with 2 if the server is not running, and with 1 on other
+> failure conditions. This mode should only be used when the machine is
+> about to be shut down.
 
 Many database parameters can be adjusted while the database is
 running. Just modify /etc/postgresql/9.1/main/postgresql.conf and
@@ -127,7 +128,7 @@ database failed to start. It may tell you to check the logs, but you
 won't find any information there. pg_ctlcluster runs the following
 command underneath when it actually goes to start PostgreSQL:
 
-```
+```bash
 /usr/lib/postgresql/9.1/bin/pg_ctl start -D /var/lib/postgresql/9.1/main -s -o \
     '-c config_file="/etc/postgresql/9.1/main/postgresql.conf"'
 ```
@@ -138,13 +139,12 @@ stop PostgreSQL and restart it using pg_ctlcluster after you've debugged
 with this approach, since it does bypass some of the work that
 pg_ctlcluster does.
 
-
 #### PostgreSQL vacuuming alerts
 
 The `autovac_freeze` PostgreSQL alert from `check_postgres` is
-particularly important.  This alert indicates that the age (in terms
+particularly important. This alert indicates that the age (in terms
 of number of transactions) of the oldest transaction id (XID) is
-getting close to the `autovacuum_freeze_max_age` setting.  When the
+getting close to the `autovacuum_freeze_max_age` setting. When the
 oldest XID hits that age, PostgreSQL will force a VACUUM operation,
 which can often lead to sudden downtime until the operation finishes.
 If it did not do this and the age of the oldest XID reached 2 billion,

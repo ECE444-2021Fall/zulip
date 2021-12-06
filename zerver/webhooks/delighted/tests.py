@@ -2,12 +2,12 @@ from zerver.lib.test_classes import WebhookTestCase
 
 
 class DelightedHookTests(WebhookTestCase):
-    STREAM_NAME = 'delighted'
+    STREAM_NAME = "delighted"
     URL_TEMPLATE = "/api/v1/external/delighted?stream={stream}&api_key={api_key}"
-    FIXTURE_DIR_NAME = 'delighted'
+    WEBHOOK_DIR_NAME = "delighted"
 
     def test_feedback_message_promoter(self) -> None:
-        expected_topic = "Survey Response"
+        expected_topic = "Survey response"
         expected_message = """
 Kudos! You have a new promoter. Score of 9/10 from charlie_gravis@example.com:
 
@@ -24,11 +24,13 @@ Your service is fast and flawless!
         )
 
     def test_feedback_message_non_promoter(self) -> None:
-        expected_topic = "Survey Response"
-        expected_message = ("Great! You have new feedback.\n"
-                            ">Score of 5/10 from paul_gravis@example.com"
-                            "\n>Your service is slow, but nearly flawless! "
-                            "Keep up the good work!")
+        expected_topic = "Survey response"
+        expected_message = (
+            "Great! You have new feedback.\n"
+            ">Score of 5/10 from paul_gravis@example.com"
+            "\n>Your service is slow, but nearly flawless! "
+            "Keep up the good work!"
+        )
         expected_message = """
 Great! You have new feedback. Score of 5/10 from paul_gravis@example.com:
 

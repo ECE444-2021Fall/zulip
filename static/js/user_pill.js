@@ -1,11 +1,12 @@
-"use strict";
-
-const people = require("./people");
+import * as blueslip from "./blueslip";
+import * as input_pill from "./input_pill";
+import {page_params} from "./page_params";
+import * as people from "./people";
 
 // This will be used for pills for things like composing PMs
 // or adding users to a stream/group.
 
-exports.create_item_from_email = function (email, current_items) {
+export function create_item_from_email(email, current_items) {
     // For normal Zulip use, we need to validate the email for our realm.
     const user = people.get_by_email(email);
 
@@ -21,6 +22,7 @@ exports.create_item_from_email = function (email, current_items) {
             // so we just create a pill where the display value
             // is the email itself.
             return {
+                type: "user",
                 display_value: email,
                 email,
             };
@@ -41,42 +43,51 @@ exports.create_item_from_email = function (email, current_items) {
     // We must supply display_value for the widget to work.  Everything
     // else is for our own use in callbacks.
     const item = {
+        type: "user",
         display_value: user.full_name,
         user_id: user.user_id,
         email: user.email,
         img_src: avatar_url,
+        deactivated: false,
     };
 
+    // We pass deactivated true for a deactivated user
+    if (!people.is_person_active(user.user_id)) {
+        item.deactivated = true;
+        item.display_value = user.full_name + " (deactivated)";
+    }
+
     return item;
-};
+}
 
-exports.get_email_from_item = function (item) {
+export function get_email_from_item(item) {
     return item.email;
-};
+}
 
-exports.append_person = function (opts) {
+export function append_person(opts) {
     const person = opts.person;
     const pill_widget = opts.pill_widget;
     const avatar_url = people.small_avatar_url_for_person(person);
 
     pill_widget.appendValidatedData({
+        type: "user",
         display_value: person.full_name,
         user_id: person.user_id,
         email: person.email,
         img_src: avatar_url,
     });
     pill_widget.clear_text();
-};
+}
 
-exports.get_user_ids = function (pill_widget) {
+export function get_user_ids(pill_widget) {
     const items = pill_widget.items();
     let user_ids = items.map((item) => item.user_id);
     user_ids = user_ids.filter(Boolean); // be defensive about undefined users
 
     return user_ids;
-};
+}
 
-exports.has_unconverted_data = function (pill_widget) {
+export function has_unconverted_data(pill_widget) {
     // This returns true if we either have text that hasn't been
     // turned into pills or email-only pills (for Zephyr).
     if (pill_widget.is_pending()) {
@@ -87,37 +98,35 @@ exports.has_unconverted_data = function (pill_widget) {
     const has_unknown_items = items.some((item) => item.user_id === undefined);
 
     return has_unknown_items;
-};
+}
 
-exports.typeahead_source = function (pill_widget) {
+export function typeahead_source(pill_widget) {
     const persons = people.get_realm_users();
-    return user_pill.filter_taken_users(persons, pill_widget);
-};
+    return filter_taken_users(persons, pill_widget);
+}
 
-exports.filter_taken_users = function (items, pill_widget) {
-    const taken_user_ids = exports.get_user_ids(pill_widget);
+export function filter_taken_users(items, pill_widget) {
+    const taken_user_ids = get_user_ids(pill_widget);
     items = items.filter((item) => !taken_user_ids.includes(item.user_id));
     return items;
-};
+}
 
-exports.append_user = function (user, pills) {
+export function append_user(user, pills) {
     if (user) {
-        exports.append_person({
+        append_person({
             pill_widget: pills,
             person: user,
         });
     } else {
         blueslip.warn("Undefined user in function append_user");
     }
-};
+}
 
-exports.create_pills = function (pill_container) {
+export function create_pills(pill_container) {
     const pills = input_pill.create({
         container: pill_container,
-        create_item_from_text: exports.create_item_from_email,
-        get_text_from_item: exports.get_email_from_item,
+        create_item_from_text: create_item_from_email,
+        get_text_from_item: get_email_from_item,
     });
     return pills;
-};
-
-window.user_pill = exports;
+}

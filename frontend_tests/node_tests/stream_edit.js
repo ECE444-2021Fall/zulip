@@ -2,51 +2,46 @@
 
 const {strict: assert} = require("assert");
 
-const {stub_templates} = require("../zjsunit/handlebars");
-const {set_global, zrequire} = require("../zjsunit/namespace");
+const {mock_esm, zrequire} = require("../zjsunit/namespace");
 const {run_test} = require("../zjsunit/test");
-const {make_zjquery} = require("../zjsunit/zjquery");
-
-const {LazySet} = zrequire("lazy_set");
+const $ = require("../zjsunit/zjquery");
+const {page_params, user_settings} = require("../zjsunit/zpage_params");
 
 const noop = () => {};
-stub_templates(() => noop);
 
-set_global("channel", {});
-set_global("hashchange", {update_browser_history: noop});
-set_global("hash_util", {
-    stream_edit_uri: noop,
-    by_stream_uri: noop,
-});
-set_global("list_render", {
-    create: () => ({init: noop}),
-});
-set_global("page_params", {});
-set_global("settings_notifications", {
-    get_notifications_table_row_data: noop,
-});
-set_global("stream_color", {
-    set_colorpicker_color: noop,
-});
-set_global("stream_ui_updates", {
-    update_add_subscriptions_elements: noop,
-});
-set_global("typeahead_helper", {});
-set_global("ui", {
+const typeahead_helper = mock_esm("../../static/js/typeahead_helper");
+const ui = mock_esm("../../static/js/ui", {
     get_scroll_element: noop,
 });
-set_global("$", make_zjquery());
 
-zrequire("input_pill");
+mock_esm("../../static/js/browser_history", {update: noop});
+mock_esm("../../static/js/hash_util", {
+    stream_edit_uri: noop,
+    by_stream_uri: noop,
+    active_stream: noop,
+});
+mock_esm("../../static/js/list_widget", {
+    create: () => ({init: noop}),
+});
+mock_esm("../../static/js/stream_color", {
+    set_colorpicker_color: noop,
+});
+mock_esm("../../static/js/components", {
+    toggle: () => ({
+        get: () => [],
+    }),
+});
+
+const peer_data = zrequire("peer_data");
 const people = zrequire("people");
-zrequire("pill_typeahead");
-zrequire("subs");
-zrequire("stream_edit");
-zrequire("stream_data");
-zrequire("stream_pill");
-zrequire("user_pill");
-
-stream_edit.sort_but_pin_current_user_on_top = noop;
+const stream_data = zrequire("stream_data");
+const stream_edit = zrequire("stream_edit");
+const stream_pill = zrequire("stream_pill");
+const user_groups = zrequire("user_groups");
+const user_group_pill = zrequire("user_group_pill");
+const user_pill = zrequire("user_pill");
+const stream_ui_updates = zrequire("stream_ui_updates");
+const settings_config = zrequire("settings_config");
 
 const jill = {
     email: "jill@zulip.com",
@@ -69,59 +64,94 @@ const me = {
     full_name: "me",
 };
 
-page_params.user_id = me.user_id;
 const persons = [jill, mark, fred, me];
 for (const person of persons) {
     people.add_active_user(person);
+}
+
+const admins = {
+    name: "Admins",
+    description: "foo",
+    id: 1,
+    members: [jill.user_id, mark.user_id],
+};
+const testers = {
+    name: "Testers",
+    description: "bar",
+    id: 2,
+    members: [mark.user_id, fred.user_id, me.user_id],
+};
+
+const groups = [admins, testers];
+for (const group of groups) {
+    user_groups.add(group);
 }
 
 const denmark = {
     stream_id: 1,
     name: "Denmark",
     subscribed: true,
-    subscribers: new LazySet([me.user_id, mark.user_id]),
     render_subscribers: true,
-    should_display_subscription_button: true,
 };
+peer_data.set_subscribers(denmark.stream_id, [me.user_id, mark.user_id]);
+
 const sweden = {
     stream_id: 2,
     name: "Sweden",
     subscribed: false,
-    subscribers: new LazySet([mark.user_id, jill.user_id]),
 };
+peer_data.set_subscribers(sweden.stream_id, [mark.user_id, jill.user_id]);
 
 const subs = [denmark, sweden];
 for (const sub of subs) {
     stream_data.add_sub(sub);
 }
 
-const subscriptions_table_selector = "#subscriptions_table";
-const input_field_stub = $.create(".input");
+function test_ui(label, f) {
+    run_test(label, ({override, mock_template}) => {
+        page_params.user_id = me.user_id;
+        stream_edit.initialize();
+        f({override, mock_template});
+    });
+}
 
-const sub_settings_selector =
-    "#subscription_overlay .subscription_settings[data-stream-id='" + denmark.stream_id + "']";
-const $sub_settings_container = $.create(sub_settings_selector);
-$sub_settings_container.find = noop;
-$sub_settings_container.find = function () {
-    return input_field_stub;
-};
+test_ui("subscriber_pills", ({override, mock_template}) => {
+    mock_template("input_pill.hbs", true, (data, html) => {
+        assert.equal(typeof data.display_value, "string");
+        return html;
+    });
+    mock_template("stream_settings/stream_settings.hbs", false, () => "stream_settings");
+    mock_template(
+        "stream_settings/stream_subscription_request_result.hbs",
+        false,
+        () => "stream_subscription_request_result",
+    );
 
-const pill_container_stub = $.create(sub_settings_selector + " .pill-container");
-pill_container_stub.find = function () {
-    return input_field_stub;
-};
+    override(stream_edit, "sort_but_pin_current_user_on_top", noop);
 
-const $subscription_settings = $.create(".subscription_settings");
-$subscription_settings.addClass = noop;
-$subscription_settings.closest = () => $subscription_settings;
-$subscription_settings.attr("data-stream-id", denmark.stream_id);
-$subscription_settings.length = 0;
+    const subscriptions_table_selector = "#subscriptions_table";
+    const input_field_stub = $.create(".input");
 
-const $add_subscribers_form = $.create(".subscriber_list_add form");
-$add_subscribers_form.closest = () => $subscription_settings;
+    input_field_stub.before = () => {};
 
-run_test("subscriber_pills", () => {
-    stream_edit.initialize();
+    const sub_settings_selector = `#subscription_overlay .subscription_settings[data-stream-id='${CSS.escape(
+        denmark.stream_id,
+    )}']`;
+    const $sub_settings_container = $.create(sub_settings_selector);
+    $sub_settings_container.find = noop;
+    $sub_settings_container.find = () => input_field_stub;
+
+    const pill_container_stub = $.create(sub_settings_selector + " .pill-container");
+    pill_container_stub.find = () => input_field_stub;
+
+    const $subscription_settings = $.create(".subscription_settings");
+    $subscription_settings.addClass = noop;
+    $subscription_settings.closest = () => $subscription_settings;
+    $subscription_settings.attr("data-stream-id", denmark.stream_id);
+    $subscription_settings.length = 0;
+
+    const $add_subscribers_form = $.create(".subscriber_list_add form");
+    $add_subscribers_form.closest = () => $subscription_settings;
 
     let template_rendered = false;
     ui.get_content_element = () => {
@@ -132,17 +162,17 @@ run_test("subscriber_pills", () => {
     let expected_user_ids = [];
     let input_typeahead_called = false;
     let add_subscribers_request = false;
-    stream_edit.invite_user_to_stream = (user_ids, sub) => {
+    override(stream_edit, "invite_user_to_stream", (user_ids, sub) => {
         assert.equal(sub.stream_id, denmark.stream_id);
-        assert.deepEqual(user_ids.sort(), expected_user_ids);
+        assert.deepEqual(user_ids.sort(), expected_user_ids.sort());
         add_subscribers_request = true;
-    };
+    });
 
-    input_field_stub.typeahead = function (config) {
+    input_field_stub.typeahead = (config) => {
         assert.equal(config.items, 5);
-        assert(config.fixed);
-        assert(config.dropup);
-        assert(config.stopAdvance);
+        assert.ok(config.fixed);
+        assert.ok(config.dropup);
+        assert.ok(config.stopAdvance);
 
         assert.equal(typeof config.source, "function");
         assert.equal(typeof config.highlighter, "function");
@@ -150,33 +180,70 @@ run_test("subscriber_pills", () => {
         assert.equal(typeof config.sorter, "function");
         assert.equal(typeof config.updater, "function");
 
-        const fake_this = {
+        const fake_stream_this = {
             query: "#Denmark",
+        };
+        const fake_person_this = {
+            query: "me",
+        };
+        const fake_group_this = {
+            query: "test",
         };
 
         (function test_highlighter() {
-            const fake_stream = $.create("fake-stream");
+            const fake_html = $.create("fake-html");
             typeahead_helper.render_stream = function () {
-                return fake_stream;
+                return fake_html;
             };
-            assert.equal(config.highlighter.call(fake_this, denmark), fake_stream);
+            assert.equal(config.highlighter.call(fake_stream_this, denmark), fake_html);
+
+            typeahead_helper.render_user_group = function () {
+                return fake_html;
+            };
+
+            typeahead_helper.render_person = function () {
+                return fake_html;
+            };
+
+            assert.equal(config.highlighter.call(fake_group_this, testers), fake_html);
+            assert.equal(config.highlighter.call(fake_person_this, me), fake_html);
         })();
 
         (function test_matcher() {
-            let result = config.matcher.call(fake_this, denmark);
-            assert(result);
+            let result = config.matcher.call(fake_stream_this, denmark);
+            assert.ok(result);
+            result = config.matcher.call(fake_stream_this, sweden);
+            assert.ok(!result);
 
-            result = config.matcher.call(fake_this, sweden);
-            assert(!result);
+            result = config.matcher.call(fake_group_this, testers);
+            assert.ok(result);
+            result = config.matcher.call(fake_group_this, admins);
+            assert.ok(!result);
+
+            result = config.matcher.call(fake_person_this, me);
+            assert.ok(result);
+            result = config.matcher.call(fake_person_this, jill);
+            assert.ok(!result);
         })();
 
         (function test_sorter() {
             let sort_streams_called = false;
-            typeahead_helper.sort_streams = function () {
+            typeahead_helper.sort_streams = () => {
                 sort_streams_called = true;
             };
-            config.sorter.call(fake_this);
-            assert(sort_streams_called);
+            config.sorter.call(fake_stream_this);
+            assert.ok(sort_streams_called);
+
+            let sort_recipients_called = false;
+            typeahead_helper.sort_recipients = function () {
+                sort_recipients_called = true;
+            };
+            config.sorter.call(fake_group_this, [testers]);
+            assert.ok(sort_recipients_called);
+
+            sort_recipients_called = false;
+            config.sorter.call(fake_person_this, [me]);
+            assert.ok(sort_recipients_called);
         })();
 
         (function test_updater() {
@@ -186,21 +253,29 @@ run_test("subscriber_pills", () => {
             }
 
             assert.equal(number_of_pills(), 0);
-            config.updater.call(fake_this, denmark);
+            config.updater.call(fake_stream_this, denmark);
             assert.equal(number_of_pills(), 1);
-            fake_this.query = me.email;
-            config.updater.call(fake_this, me);
+            config.updater.call(fake_person_this, me);
             assert.equal(number_of_pills(), 2);
-            fake_this.query = "#Denmark";
+            config.updater.call(fake_group_this, testers);
+            assert.equal(number_of_pills(), 3);
         })();
 
         (function test_source() {
-            const result = config.source.call(fake_this);
-            const taken_ids = stream_pill.get_stream_ids(stream_edit.pill_widget);
-            const stream_ids = result.map((stream) => stream.stream_id).sort();
-            let expected_ids = subs.map((stream) => stream.stream_id).sort();
-            expected_ids = expected_ids.filter((id) => !taken_ids.includes(id));
-            assert.deepEqual(stream_ids, expected_ids);
+            let result = config.source.call(fake_stream_this);
+            const stream_ids = result.map((stream) => stream.stream_id);
+            const expected_stream_ids = [sweden.stream_id];
+            assert.deepEqual(stream_ids, expected_stream_ids);
+
+            result = config.source.call(fake_group_this);
+            const group_ids = result.map((group) => group.id).filter(Boolean);
+            const expected_group_ids = [admins.id];
+            assert.deepEqual(group_ids, expected_group_ids);
+
+            result = config.source.call(fake_person_this);
+            const user_ids = result.map((user) => user.user_id).filter(Boolean);
+            const expected_user_ids = [jill.user_id, fred.user_id];
+            assert.deepEqual(user_ids, expected_user_ids);
         })();
 
         input_typeahead_called = true;
@@ -214,9 +289,18 @@ run_test("subscriber_pills", () => {
 
     let fake_this = $subscription_settings;
     let event = {target: fake_this};
+
+    override(stream_ui_updates, "update_toggler_for_sub", noop);
+    override(stream_ui_updates, "update_add_subscriptions_elements", noop);
+
+    const {stream_notification_settings, pm_mention_notification_settings} = settings_config;
+    for (const setting of [...stream_notification_settings, ...pm_mention_notification_settings]) {
+        user_settings[setting] = true;
+    }
+
     stream_row_handler.call(fake_this, event);
-    assert(template_rendered);
-    assert(input_typeahead_called);
+    assert.ok(template_rendered);
+    assert.ok(input_typeahead_called);
 
     let add_subscribers_handler = $(subscriptions_table_selector).get_on_handler(
         "submit",
@@ -232,24 +316,26 @@ run_test("subscriber_pills", () => {
 
     // We cannot subscribe ourselves (`me`) as
     // we are already subscribed to denmark stream.
-    const potential_denmark_stream_subscribers = denmark.subscribers
-        .map()
-        .filter((id) => id !== me.user_id);
+    const potential_denmark_stream_subscribers = Array.from(
+        peer_data.get_subscribers(denmark.stream_id),
+    ).filter((id) => id !== me.user_id);
 
-    // denmark.stream_id is stubbed. Thus request is
-    // sent to add all subscribers of stream Denmark.
-    expected_user_ids = potential_denmark_stream_subscribers;
+    // `denmark` stream pill, `me` user pill and
+    // `testers` user group pill are stubbed.
+    // Thus request is sent to add all the users.
+    expected_user_ids = [mark.user_id, fred.user_id];
     add_subscribers_handler(event);
 
     add_subscribers_handler = $(subscriptions_table_selector).get_on_handler(
         "keyup",
         ".subscriber_list_add form",
     );
-    event.which = 13;
+    event.key = "Enter";
 
     // Only Denmark stream pill is created and a
     // request is sent to add all it's subscribers.
-    user_pill.get_user_ids = () => [];
+    override(user_pill, "get_user_ids", () => []);
+    override(user_group_pill, "get_user_ids", () => []);
     expected_user_ids = potential_denmark_stream_subscribers;
     add_subscribers_handler(event);
 
@@ -257,19 +343,28 @@ run_test("subscriber_pills", () => {
     stream_pill.get_user_ids = () => [];
     add_subscribers_request = false;
     add_subscribers_handler(event);
-    assert(!add_subscribers_request);
+    assert.ok(!add_subscribers_request);
 
     // No request is sent if we try to subscribe ourselves
     // only and are already subscribed to the stream.
-    user_pill.get_user_ids = () => [me.user_id];
+    override(user_pill, "get_user_ids", () => [me.user_id]);
     add_subscribers_handler(event);
-    assert(!add_subscribers_request);
+    assert.ok(!add_subscribers_request);
 
     // Denmark stream pill and fred and mark user pills are created.
     // But only one request for mark is sent even though a mark user
     // pill is created and mark is also a subscriber of Denmark stream.
-    user_pill.get_user_ids = () => [mark.user_id, fred.user_id];
-    stream_pill.get_user_ids = () => denmark.subscribers.map();
+    override(user_pill, "get_user_ids", () => [mark.user_id, fred.user_id]);
+    stream_pill.get_user_ids = () => peer_data.get_subscribers(denmark.stream_id);
     expected_user_ids = potential_denmark_stream_subscribers.concat(fred.user_id);
+    add_subscribers_handler(event);
+
+    function is_person_active(user_id) {
+        return user_id === mark.user_id;
+    }
+    // Deactivated user_id is not included in request.
+    override(user_pill, "get_user_ids", () => [mark.user_id, fred.user_id]);
+    override(people, "is_person_active", is_person_active);
+    expected_user_ids = [mark.user_id];
     add_subscribers_handler(event);
 });

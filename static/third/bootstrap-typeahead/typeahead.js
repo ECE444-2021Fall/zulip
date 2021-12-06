@@ -69,6 +69,11 @@
  *   so that the `Backspace` key is free to interact with the other elements.
  *
  *   Our custom changes include all mentions of `helpOnEmptyStrings` and `hideOnEmpty`.
+ *
+ * 6. Prevent typeahead going off top of screen:
+ *   If typeahead would go off the top of the screen, we set its top to 0 instead.
+ *   This patch should be replaced with something more flexible.
+ *
  * ============================================================ */
 
 !function($){
@@ -172,6 +177,11 @@
       var top_pos = pos.top + pos.height
       if (this.dropup) {
         top_pos = pos.top - this.$container.outerHeight()
+      }
+
+      // Zulip patch: Avoid typeahead going off top of screen.
+      if (top_pos < 0) {
+          top_pos = 0;
       }
 
       this.$container.css({
@@ -316,8 +326,17 @@
       }
 
       this.$menu
-        .on('click', this.click.bind(this))
+        .on('click', 'li', this.click.bind(this))
         .on('mouseenter', 'li', this.mouseenter.bind(this))
+    }
+
+  , unlisten: function () {
+      this.$container.remove();
+      var events = ["blur", "keydown", "keyup", "keypress"];
+      for (var i=0; i<events.length; i++) {
+        this.$element.off(events[i]);
+      }
+      this.$element.removeData("typeahead");
     }
 
   , eventSupported: function(eventName) {
@@ -418,6 +437,14 @@
   , click: function (e) {
       e.stopPropagation()
       e.preventDefault()
+      // The original bootstrap code expected `mouseenter` to be called
+      // to set the active element before `select()`.
+      // Since select() selects the element with the active class, if
+      // we trigger a click from JavaScript (or with a mobile touchscreen),
+      // this won't work. So we need to set the active element ourselves,
+      // and the simplest way to do that is to just call the `mouseenter`
+      // handler here.
+      this.mouseenter(e)
       this.select(e)
     }
 

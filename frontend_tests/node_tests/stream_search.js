@@ -2,24 +2,25 @@
 
 const {strict: assert} = require("assert");
 
-const {set_global, zrequire} = require("../zjsunit/namespace");
+const {mock_esm, zrequire} = require("../zjsunit/namespace");
 const {run_test} = require("../zjsunit/test");
-const {make_zjquery} = require("../zjsunit/zjquery");
+const $ = require("../zjsunit/zjquery");
+
 // This tests the stream searching functionality which currently
 // lives in stream_list.js.
 
-set_global("$", make_zjquery());
-zrequire("stream_list");
-
 const noop = () => {};
 
-set_global("resize", {
+mock_esm("../../static/js/resize", {
     resize_page_components: noop,
+
     resize_stream_filters_container: noop,
 });
 
-set_global("popovers", {});
-set_global("stream_popover", {});
+const popovers = mock_esm("../../static/js/popovers");
+const stream_popover = mock_esm("../../static/js/stream_popover");
+
+const stream_list = zrequire("stream_list");
 
 function expand_sidebar() {
     $(".app-main .column-left").addClass("expanded");
@@ -28,14 +29,14 @@ function expand_sidebar() {
 function make_cursor_helper() {
     const events = [];
 
-    stream_list.stream_cursor = {
+    stream_list.__Rewire__("stream_cursor", {
         reset: () => {
             events.push("reset");
         },
         clear: () => {
             events.push("clear");
         },
-    };
+    });
 
     return {
         events,
@@ -61,7 +62,7 @@ function clear_search_input() {
     stream_list.clear_search({stopPropagation: noop});
 }
 
-run_test("basics", () => {
+run_test("basics", ({override}) => {
     let cursor_helper;
     const input = $(".stream-list-filter");
     const section = $(".stream_search_section");
@@ -72,35 +73,35 @@ run_test("basics", () => {
     cursor_helper = make_cursor_helper();
 
     function verify_expanded() {
-        assert(!section.hasClass("notdisplayed"));
+        assert.ok(!section.hasClass("notdisplayed"));
         simulate_search_expanded();
     }
 
     function verify_focused() {
-        assert(stream_list.searching());
-        assert(input.is_focused());
+        assert.ok(stream_list.searching());
+        assert.ok(input.is_focused());
     }
 
     function verify_blurred() {
-        assert(stream_list.searching());
-        assert(input.is_focused());
+        assert.ok(stream_list.searching());
+        assert.ok(input.is_focused());
     }
 
     function verify_collapsed() {
-        assert(section.hasClass("notdisplayed"));
-        assert(!input.is_focused());
-        assert(!stream_list.searching());
+        assert.ok(section.hasClass("notdisplayed"));
+        assert.ok(!input.is_focused());
+        assert.ok(!stream_list.searching());
         simulate_search_collapsed();
     }
 
     function verify_list_updated(f) {
         let updated;
-        stream_list.update_streams_sidebar = () => {
+        override(stream_list, "update_streams_sidebar", () => {
             updated = true;
-        };
+        });
 
         f();
-        assert(updated);
+        assert.ok(updated);
     }
 
     // Initiate search (so expand widget).
@@ -183,6 +184,7 @@ run_test("expanding_sidebar", () => {
     stream_popover.show_streamlist_sidebar = () => {
         events.push("stream_popover.show_streamlist_sidebar");
     };
+    $("#streamlist-toggle").show();
 
     stream_list.initiate_search();
 

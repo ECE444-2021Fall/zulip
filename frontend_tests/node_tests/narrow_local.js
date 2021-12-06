@@ -2,20 +2,16 @@
 
 const {strict: assert} = require("assert");
 
-const {set_global, zrequire} = require("../zjsunit/namespace");
+const {mock_esm, zrequire} = require("../zjsunit/namespace");
 const {run_test} = require("../zjsunit/test");
 
-zrequire("Filter", "js/filter");
-zrequire("FetchStatus", "js/fetch_status");
-zrequire("MessageListData", "js/message_list_data");
-zrequire("narrow_state");
-zrequire("narrow");
-zrequire("stream_data");
+const all_messages_data = mock_esm("../../static/js/all_messages_data");
+const message_edit = mock_esm("../../static/js/message_edit");
 
-set_global("message_list", {});
-set_global("muting", {
-    is_topic_muted: () => false,
-});
+const {Filter} = zrequire("../js/filter");
+const {MessageListData} = zrequire("../js/message_list_data");
+const narrow_state = zrequire("narrow_state");
+const narrow = zrequire("narrow");
 
 function test_with(fixture) {
     const filter = new Filter(fixture.filter_terms);
@@ -27,15 +23,15 @@ function test_with(fixture) {
     if (fixture.unread_info.flavor === "found") {
         for (const msg of fixture.all_messages) {
             if (msg.id === fixture.unread_info.msg_id) {
-                assert(filter.predicate()(msg));
+                assert.ok(filter.predicate()(msg));
             }
         }
     }
 
-    const muting_enabled = narrow_state.muting_enabled();
+    const excludes_muted_topics = narrow_state.excludes_muted_topics();
     const msg_data = new MessageListData({
         filter: narrow_state.filter(),
-        muting_enabled,
+        excludes_muted_topics,
     });
     const id_info = {
         target_id: fixture.target_id,
@@ -43,28 +39,26 @@ function test_with(fixture) {
         final_select_id: undefined,
     };
 
-    message_list.all = {
-        data: {
-            fetch_status: {
-                has_found_newest: () => fixture.has_found_newest,
-            },
+    all_messages_data.all_messages_data = {
+        fetch_status: {
+            has_found_newest: () => fixture.has_found_newest,
         },
         empty: () => fixture.empty,
         all_messages: () => {
-            assert(fixture.all_messages !== undefined);
+            assert.notEqual(fixture.all_messages, undefined);
             return fixture.all_messages;
         },
         first: () => {
-            assert(fixture.all_messages !== undefined);
+            assert.notEqual(fixture.all_messages, undefined);
             return fixture.all_messages[0];
         },
         last: () => {
-            assert(fixture.all_messages !== undefined);
+            assert.notEqual(fixture.all_messages, undefined);
             return fixture.all_messages[fixture.all_messages.length - 1];
         },
     };
 
-    narrow_state.get_first_unread_info = () => fixture.unread_info;
+    narrow_state.__Rewire__("get_first_unread_info", () => fixture.unread_info);
 
     narrow.maybe_add_local_messages({
         id_info,
@@ -186,9 +180,9 @@ run_test("is private with no target", () => {
         },
         has_found_newest: true,
         all_messages: [
-            {id: 450, type: "private"},
-            {id: 500, type: "private"},
-            {id: 550, type: "private"},
+            {id: 450, type: "private", to_user_ids: "1,2"},
+            {id: 500, type: "private", to_user_ids: "1,2"},
+            {id: 550, type: "private", to_user_ids: "1,2"},
         ],
         expected_id_info: {
             target_id: undefined,
@@ -251,9 +245,9 @@ run_test("is:private with target and no unreads", () => {
         empty: false,
         all_messages: [
             {id: 350},
-            {id: 400, type: "private"},
-            {id: 450, type: "private"},
-            {id: 500, type: "private"},
+            {id: 400, type: "private", to_user_ids: "1,2"},
+            {id: 450, type: "private", to_user_ids: "1,2"},
+            {id: 500, type: "private", to_user_ids: "1,2"},
         ],
         expected_id_info: {
             target_id: 450,
@@ -295,6 +289,54 @@ run_test("is:alerted with no unreads and one match", () => {
         all_messages: [
             {id: 55, topic: "whatever", alerted: true},
             {id: 57, topic: "whatever", alerted: false},
+        ],
+        expected_id_info: {
+            target_id: undefined,
+            final_select_id: 55,
+            local_select_id: 55,
+        },
+        expected_msg_ids: [55],
+    };
+
+    test_with(fixture);
+});
+
+run_test("is:resolved with one unread", () => {
+    const resolved_topic_name = message_edit.RESOLVED_TOPIC_PREFIX + "foo";
+    const fixture = {
+        filter_terms: [{operator: "is", operand: "resolved"}],
+        unread_info: {
+            flavor: "found",
+            msg_id: 56,
+        },
+        has_found_newest: true,
+        all_messages: [
+            {id: 55, type: "stream", topic: resolved_topic_name},
+            {id: 56, type: "stream", topic: resolved_topic_name},
+            {id: 57, type: "stream", topic: "foo"},
+        ],
+        expected_id_info: {
+            target_id: undefined,
+            final_select_id: 56,
+            local_select_id: 56,
+        },
+        expected_msg_ids: [55, 56],
+    };
+
+    test_with(fixture);
+});
+
+run_test("is:resolved with no unreads", () => {
+    const resolved_topic_name = message_edit.RESOLVED_TOPIC_PREFIX + "foo";
+    const fixture = {
+        filter_terms: [{operator: "is", operand: "resolved"}],
+        unread_info: {
+            flavor: "not_found",
+        },
+        has_found_newest: true,
+        all_messages: [
+            {id: 55, type: "stream", topic: resolved_topic_name},
+            {id: 57, type: "stream", topic: "foo"},
         ],
         expected_id_info: {
             target_id: undefined,
@@ -399,7 +441,7 @@ run_test("stream/topic not in all_messages", () => {
     // This is a bit of a corner case, but you could have a scenario
     // where you've gone way back in a topic (perhaps something that
     // has been muted a long time) and find an unread message that isn't
-    // actually in message_list.all.
+    // actually in all_messages_data.
     const fixture = {
         filter_terms: [
             {operator: "stream", operand: "one"},

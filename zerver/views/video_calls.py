@@ -14,22 +14,29 @@ from django.http import HttpRequest, HttpResponse
 from django.middleware import csrf
 from django.shortcuts import redirect, render
 from django.utils.crypto import constant_time_compare, salted_hmac
-from django.utils.translation import ugettext as _
+from django.utils.translation import gettext as _
 from django.views.decorators.cache import never_cache
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 from oauthlib.oauth2 import OAuth2Error
 from requests_oauthlib import OAuth2Session
 
-from zerver.decorator import REQ, has_request_variables, zulip_login_required
+from zerver.decorator import zulip_login_required
 from zerver.lib.actions import do_set_zoom_token
 from zerver.lib.exceptions import ErrorCode, JsonableError
+from zerver.lib.outgoing_http import OutgoingSession
 from zerver.lib.pysa import mark_sanitized
-from zerver.lib.response import json_error, json_success
+from zerver.lib.request import REQ, has_request_variables
+from zerver.lib.response import json_success
 from zerver.lib.subdomains import get_subdomain
-from zerver.lib.url_encoding import add_query_arg_to_redirect_url, add_query_to_redirect_url
+from zerver.lib.url_encoding import append_url_query_string
 from zerver.lib.validator import check_dict, check_string
 from zerver.models import UserProfile, get_realm
+
+
+class VideoCallSession(OutgoingSession):
+    def __init__(self) -> None:
+        super().__init__(role="video_calls", timeout=5)
 
 
 class InvalidZoomTokenError(JsonableError):
@@ -43,13 +50,19 @@ def get_zoom_session(user: UserProfile) -> OAuth2Session:
     if settings.VIDEO_ZOOM_CLIENT_ID is None:
         raise JsonableError(_("Zoom credentials have not been configured"))
 
+    client_id = settings.VIDEO_ZOOM_CLIENT_ID
+    client_secret = settings.VIDEO_ZOOM_CLIENT_SECRET
+    if user.realm.string_id in settings.VIDEO_ZOOM_TESTING_REALMS:  # nocoverage
+        client_id = settings.VIDEO_ZOOM_TESTING_CLIENT_ID
+        client_secret = settings.VIDEO_ZOOM_TESTING_CLIENT_SECRET
+
     return OAuth2Session(
-        settings.VIDEO_ZOOM_CLIENT_ID,
+        client_id,
         redirect_uri=urljoin(settings.ROOT_DOMAIN_URI, "/calls/zoom/complete"),
         auto_refresh_url="https://zoom.us/oauth/token",
         auto_refresh_kwargs={
-            "client_id": settings.VIDEO_ZOOM_CLIENT_ID,
-            "client_secret": settings.VIDEO_ZOOM_CLIENT_SECRET,
+            "client_id": client_id,
+            "client_secret": client_secret,
         },
         token=user.zoom_token,
         token_updater=partial(do_set_zoom_token, user),
@@ -76,6 +89,8 @@ def get_zoom_sid(request: HttpRequest) -> str:
 @zulip_login_required
 @never_cache
 def register_zoom_user(request: HttpRequest) -> HttpResponse:
+    assert request.user.is_authenticated
+
     oauth = get_zoom_session(request.user)
     authorization_url, state = oauth.authorization_url(
         "https://zoom.us/oauth/authorize",
@@ -90,7 +105,9 @@ def register_zoom_user(request: HttpRequest) -> HttpResponse:
 @has_request_variables
 def complete_zoom_user(
     request: HttpRequest,
-    state: Dict[str, str] = REQ(validator=check_dict([("realm", check_string)], value_validator=check_string)),
+    state: Dict[str, str] = REQ(
+        json_validator=check_dict([("realm", check_string)], value_validator=check_string)
+    ),
 ) -> HttpResponse:
     if get_subdomain(request) != state["realm"]:
         return redirect(urljoin(get_realm(state["realm"]).uri, request.get_full_path()))
@@ -102,17 +119,25 @@ def complete_zoom_user(
 def complete_zoom_user_in_realm(
     request: HttpRequest,
     code: str = REQ(),
-    state: Dict[str, str] = REQ(validator=check_dict([("sid", check_string)], value_validator=check_string)),
+    state: Dict[str, str] = REQ(
+        json_validator=check_dict([("sid", check_string)], value_validator=check_string)
+    ),
 ) -> HttpResponse:
+    assert request.user.is_authenticated
+
     if not constant_time_compare(state["sid"], get_zoom_sid(request)):
         raise JsonableError(_("Invalid Zoom session identifier"))
+
+    client_secret = settings.VIDEO_ZOOM_CLIENT_SECRET
+    if request.user.realm.string_id in settings.VIDEO_ZOOM_TESTING_REALMS:  # nocoverage
+        client_secret = settings.VIDEO_ZOOM_TESTING_CLIENT_SECRET
 
     oauth = get_zoom_session(request.user)
     try:
         token = oauth.fetch_token(
             "https://zoom.us/oauth/token",
             code=code,
-            client_secret=settings.VIDEO_ZOOM_CLIENT_SECRET,
+            client_secret=client_secret,
         )
     except OAuth2Error:
         raise JsonableError(_("Invalid Zoom credentials"))
@@ -140,24 +165,11 @@ def make_zoom_video_call(request: HttpRequest, user: UserProfile) -> HttpRespons
 
     return json_success({"url": res.json()["join_url"]})
 
+
 @csrf_exempt
 @require_POST
 @has_request_variables
 def deauthorize_zoom_user(request: HttpRequest) -> HttpResponse:
-    data = json.loads(request.body)
-    payload = data["payload"]
-    if payload["user_data_retention"] == "false":
-        requests.post(
-            "https://api.zoom.us/oauth/data/compliance",
-            json={
-                "client_id": settings.VIDEO_ZOOM_CLIENT_ID,
-                "user_id": payload["user_id"],
-                "account_id": payload["account_id"],
-                "deauthorization_event_received": payload,
-                "compliance_completed": True,
-            },
-            auth=(settings.VIDEO_ZOOM_CLIENT_ID, settings.VIDEO_ZOOM_CLIENT_SECRET),
-        ).raise_for_status()
     return json_success()
 
 
@@ -166,13 +178,29 @@ def get_bigbluebutton_url(request: HttpRequest, user_profile: UserProfile) -> Ht
     # https://docs.bigbluebutton.org/dev/api.html#usage for reference for checksum
     id = "zulip-" + str(random.randint(100000000000, 999999999999))
     password = b32encode(secrets.token_bytes(7))[:10].decode()
-    checksum = hashlib.sha1(("create" + "meetingID=" + id + "&moderatorPW="
-                             + password + "&attendeePW=" + password + "a" + settings.BIG_BLUE_BUTTON_SECRET).encode()).hexdigest()
-    url = add_query_to_redirect_url("/calls/bigbluebutton/join", urlencode({
-        "meeting_id": "\"" + id + "\"",
-        "password": "\"" + password + "\"",
-        "checksum": "\"" + checksum + "\""
-    }))
+    checksum = hashlib.sha256(
+        (
+            "create"
+            + "meetingID="
+            + id
+            + "&moderatorPW="
+            + password
+            + "&attendeePW="
+            + password
+            + "a"
+            + settings.BIG_BLUE_BUTTON_SECRET
+        ).encode()
+    ).hexdigest()
+    url = append_url_query_string(
+        "/calls/bigbluebutton/join",
+        urlencode(
+            {
+                "meeting_id": id,
+                "password": password,
+                "checksum": checksum,
+            }
+        ),
+    )
     return json_success({"url": url})
 
 
@@ -184,30 +212,41 @@ def get_bigbluebutton_url(request: HttpRequest, user_profile: UserProfile) -> Ht
 @zulip_login_required
 @never_cache
 @has_request_variables
-def join_bigbluebutton(request: HttpRequest, meeting_id: str = REQ(validator=check_string),
-                       password: str = REQ(validator=check_string),
-                       checksum: str = REQ(validator=check_string)) -> HttpResponse:
+def join_bigbluebutton(
+    request: HttpRequest,
+    meeting_id: str = REQ(),
+    password: str = REQ(),
+    checksum: str = REQ(),
+) -> HttpResponse:
+    assert request.user.is_authenticated
+
     if settings.BIG_BLUE_BUTTON_URL is None or settings.BIG_BLUE_BUTTON_SECRET is None:
-        return json_error(_("Big Blue Button is not configured."))
+        raise JsonableError(_("BigBlueButton is not configured."))
     else:
         try:
-            response = requests.get(
-                add_query_to_redirect_url(settings.BIG_BLUE_BUTTON_URL + "api/create", urlencode({
-                    "meetingID": meeting_id,
-                    "moderatorPW": password,
-                    "attendeePW": password + "a",
-                    "checksum": checksum
-                })))
+            response = VideoCallSession().get(
+                append_url_query_string(
+                    settings.BIG_BLUE_BUTTON_URL + "api/create",
+                    urlencode(
+                        {
+                            "meetingID": meeting_id,
+                            "moderatorPW": password,
+                            "attendeePW": password + "a",
+                            "checksum": checksum,
+                        }
+                    ),
+                )
+            )
             response.raise_for_status()
         except requests.RequestException:
-            return json_error(_("Error connecting to the Big Blue Button server."))
+            raise JsonableError(_("Error connecting to the BigBlueButton server."))
 
         payload = ElementTree.fromstring(response.text)
         if payload.find("messageKey").text == "checksumError":
-            return json_error(_("Error authenticating to the Big Blue Button server."))
+            raise JsonableError(_("Error authenticating to the BigBlueButton server."))
 
         if payload.find("returncode").text != "SUCCESS":
-            return json_error(_("Big Blue Button server returned an unexpected error."))
+            raise JsonableError(_("BigBlueButton server returned an unexpected error."))
 
         join_params = urlencode(  # type: ignore[type-var] # https://github.com/python/typeshed/issues/4234
             {
@@ -218,6 +257,10 @@ def join_bigbluebutton(request: HttpRequest, meeting_id: str = REQ(validator=che
             quote_via=quote,
         )
 
-        checksum = hashlib.sha1(("join" + join_params + settings.BIG_BLUE_BUTTON_SECRET).encode()).hexdigest()
-        redirect_url_base = add_query_to_redirect_url(settings.BIG_BLUE_BUTTON_URL + "api/join", join_params)
-        return redirect(add_query_arg_to_redirect_url(redirect_url_base, "checksum=" + checksum))
+        checksum = hashlib.sha256(
+            ("join" + join_params + settings.BIG_BLUE_BUTTON_SECRET).encode()
+        ).hexdigest()
+        redirect_url_base = append_url_query_string(
+            settings.BIG_BLUE_BUTTON_URL + "api/join", join_params
+        )
+        return redirect(append_url_query_string(redirect_url_base, "checksum=" + checksum))

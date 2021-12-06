@@ -44,7 +44,7 @@ Botserver interaction are:
 
 1. The Zulip server sends a POST request to the Botserver on `https://bot-server.example.com/`:
 
-    ```
+    ```json
     {
       "message":{
         "content":"@**My Bot User** hello world",
@@ -89,7 +89,7 @@ pip3 install zulip_botserver
 1. Register new bot users on the Zulip server's web interface.
 
     * Log in to the Zulip server.
-    * Navigate to *Settings (<i class="fa fa-cog"></i>)* -> *Your bots* -> *Add a new bot*.
+    * Navigate to *Personal settings (<i class="fa fa-cog"></i>)* -> *Bots* -> *Add a new bot*.
       Select *Outgoing webhook* for bot type, fill out the form (using
       the URL from above) and click on *Create bot*.
     * A new bot user should appear in the *Active bots* panel.
@@ -192,7 +192,7 @@ running it manually.
 
     * Edit the `<>` sections according to your preferences.
 
-[supervisord-config-file]: https://raw.githubusercontent.com/zulip/python-zulip-api/master/zulip_botserver/zulip-botserver-supervisord.conf
+[supervisord-config-file]: https://raw.githubusercontent.com/zulip/python-zulip-api/main/zulip_botserver/zulip-botserver-supervisord.conf
 
 1. Update *supervisord* to read the configuration file:
 

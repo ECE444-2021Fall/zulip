@@ -18,7 +18,7 @@ with porting an existing Slack integration to work with Zulip.
 To register an outgoing webhook:
 
 * Log in to the Zulip server.
-* Navigate to *Settings (<i class="fa fa-cog"></i>)* -> *Your bots* ->
+* Navigate to *Personal settings (<i class="fa fa-cog"></i>)* -> *Bots* ->
   *Add a new bot*.  Select *Outgoing webhook* for bot type, the URL
   you'd like Zulip to post to as the **Endpoint URL**, the format you
   want, and click on *Create bot*. to submit the form/
@@ -34,12 +34,19 @@ There are currently two ways to trigger an outgoing webhook:
 2.  **Send a private message** with the bot as one of the recipients.
     If the bot replies, its reply will be sent to that thread.
 
+## Timeouts
+
+The remote server must respond to a `POST` request in a timely manner.
+The default timeout for outgoing webhooks is 10 seconds, though this
+can be configured by the administrator of the Zulip server by setting
+`OUTGOING_WEBHOOKS_TIMEOUT_SECONDS` in the [server's
+settings][settings].
+
+[settings]: https://zulip.readthedocs.io/en/latest/subsystems/settings.html#server-settings
+
 ## Outgoing webhook format
 
-This is an example of the JSON payload that the Zulip server will `POST`
-to your server:
-
-{generate_code_example|/zulip-outgoing-webhook:post|fixture(200)}
+{generate_code_example|/zulip-outgoing-webhook:post|fixture}
 
 ### Fields documentation
 
@@ -65,7 +72,7 @@ is helpful to distinguish deliberate non-responses from bugs.)
 Here's an example of the JSON your server should respond with if
 you would not like to send a response message:
 
-```
+```json
 {
     "response_not_required": true
 }
@@ -74,13 +81,13 @@ you would not like to send a response message:
 Here's an example of the JSON your server should respond with if
 you would like to send a response message:
 
-```
+```json
 {
     "content": "Hey, we just received **something** from Zulip!"
 }
 ```
 
-The `content` field should contain Zulip-format markdown.
+The `content` field should contain Zulip-format Markdown.
 
 Note that an outgoing webhook bot can use the [Zulip REST
 API](/api/rest) with its API key in case your bot needs to do
@@ -109,19 +116,23 @@ Here's how we fill in the fields that a Slack-format webhook expects:
         </tr>
         <tr>
             <td><code>team_id</code></td>
-            <td>String ID of the Zulip organization</td>
+            <td>ID of the Zulip organization prefixed by "T".</td>
         </tr>
         <tr>
             <td><code>team_domain</code></td>
-            <td>Domain of the Zulip organization</td>
+            <td>Hostname of the Zulip organization</td>
         </tr>
         <tr>
             <td><code>channel_id</code></td>
-            <td>Stream ID</td>
+            <td>Stream ID prefixed by "C"</td>
         </tr>
         <tr>
             <td><code>channel_name</code></td>
             <td>Stream name</td>
+        </tr>
+        <tr>
+            <td><code>thread_ts</code></td>
+            <td>Timestamp for when message was sent</td>
         </tr>
         <tr>
             <td><code>timestamp</code></td>
@@ -129,7 +140,7 @@ Here's how we fill in the fields that a Slack-format webhook expects:
         </tr>
         <tr>
             <td><code>user_id</code></td>
-            <td>ID of the user who sent the message</td>
+            <td>ID of the user who sent the message prefixed by "U"</td>
         </tr>
         <tr>
             <td><code>user_name</code></td>
@@ -154,13 +165,14 @@ The above data is posted as list of tuples (not JSON), here's an example:
 
 ```
 [('token', 'v9fpCdldZIej2bco3uoUvGp06PowKFOf'),
- ('team_id', 'zulip'),
- ('team_domain', 'zulip.com'),
- ('channel_id', '123'),
+ ('team_id', 'T1512'),
+ ('team_domain', 'zulip.example.com'),
+ ('channel_id', 'C123'),
  ('channel_name', 'integrations'),
+ ('thread_ts', 1532078950),
  ('timestamp', 1532078950),
- ('user_id', 21),
- ('user_name', 'Sample User'),
+ ('user_id', 'U21'),
+ ('user_name', 'Full Name'),
  ('text', '@**test**'),
  ('trigger_word', 'mention'),
  ('service_id', 27)]

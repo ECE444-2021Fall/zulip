@@ -2,57 +2,42 @@
 
 const {strict: assert} = require("assert");
 
-const {set_global, zrequire} = require("../zjsunit/namespace");
+const {mock_esm, set_global, zrequire} = require("../zjsunit/namespace");
 const {run_test} = require("../zjsunit/test");
-const {make_zjquery} = require("../zjsunit/zjquery");
 
-const util = zrequire("util");
-set_global("$", make_zjquery());
-
-zrequire("narrow_state");
-set_global("resize", {
+mock_esm("../../static/js/resize", {
     resize_stream_filters_container: () => {},
 });
-zrequire("stream_data");
-zrequire("Filter", "js/filter");
-zrequire("FetchStatus", "js/fetch_status");
-zrequire("MessageListData", "js/message_list_data");
-zrequire("unread");
-zrequire("narrow");
-zrequire("search_pill");
 
-set_global("channel", {});
-set_global("compose", {});
-set_global("compose_actions", {});
-set_global("current_msg_list", {});
-set_global("hashchange", {});
-set_global("home_msg_list", {});
-set_global("message_fetch", {});
-set_global("message_list", {
+const all_messages_data = mock_esm("../../static/js/all_messages_data");
+const channel = mock_esm("../../static/js/channel");
+const compose_actions = mock_esm("../../static/js/compose_actions");
+const compose_closed_ui = mock_esm("../../static/js/compose_closed_ui");
+const hashchange = mock_esm("../../static/js/hashchange");
+const message_fetch = mock_esm("../../static/js/message_fetch");
+const message_list = mock_esm("../../static/js/message_list", {
     set_narrowed(value) {
-        this.narrowed = value;
+        message_list.narrowed = value;
     },
 });
-set_global("message_scroll", {});
-set_global("message_util", {});
-set_global("notifications", {});
-set_global("page_params", {});
-set_global("search", {});
-set_global("stream_list", {});
-set_global("message_view_header", {});
-set_global("top_left_corner", {});
-set_global("typing_events", {});
-set_global("ui_util", {});
-set_global("unread_ops", {});
-set_global("search_pill_widget", {
-    widget: {
-        clear() {
-            return true;
-        },
-        appendValue() {
-            return true;
-        },
+const message_lists = mock_esm("../../static/js/message_lists", {
+    home: {},
+    current: {},
+    set_current(msg_list) {
+        message_lists.current = msg_list;
     },
+});
+const message_scroll = mock_esm("../../static/js/message_scroll");
+const message_view_header = mock_esm("../../static/js/message_view_header");
+const notifications = mock_esm("../../static/js/notifications");
+const search = mock_esm("../../static/js/search");
+const stream_list = mock_esm("../../static/js/stream_list");
+const top_left_corner = mock_esm("../../static/js/top_left_corner");
+const typing_events = mock_esm("../../static/js/typing_events");
+const ui_util = mock_esm("../../static/js/ui_util");
+const unread_ops = mock_esm("../../static/js/unread_ops");
+mock_esm("../../static/js/recent_topics_util", {
+    is_visible: () => {},
 });
 
 //
@@ -63,9 +48,14 @@ set_global("setTimeout", (f, t) => {
     f();
 });
 
-set_global("muting", {
+mock_esm("../../static/js/muted_topics", {
     is_topic_muted: () => false,
 });
+
+const util = zrequire("util");
+const narrow_state = zrequire("narrow_state");
+const stream_data = zrequire("stream_data");
+const narrow = zrequire("narrow");
 
 const denmark = {
     subscribed: false,
@@ -79,28 +69,29 @@ stream_data.add_sub(denmark);
 function test_helper() {
     let events = [];
 
-    function stub(module_name, func_name) {
-        global[module_name][func_name] = () => {
-            events.push(module_name + "." + func_name);
+    function stub(module, func_name) {
+        module[func_name] = () => {
+            events.push([module, func_name]);
         };
     }
 
-    stub("compose_actions", "on_narrow");
-    stub("hashchange", "save_narrow");
-    stub("message_scroll", "hide_indicators");
-    stub("message_scroll", "show_loading_older");
-    stub("message_scroll", "hide_top_of_narrow_notices");
-    stub("notifications", "clear_compose_notifications");
-    stub("notifications", "redraw_title");
-    stub("search", "update_button_visibility");
-    stub("stream_list", "handle_narrow_activated");
-    stub("message_view_header", "initialize");
-    stub("top_left_corner", "handle_narrow_activated");
-    stub("typing_events", "render_notifications_for_narrow");
-    stub("ui_util", "change_tab_to");
-    stub("unread_ops", "process_visible");
-    stub("compose", "update_closed_compose_buttons_for_stream");
-    stub("compose", "update_closed_compose_buttons_for_private");
+    stub(compose_actions, "on_narrow");
+    stub(compose_closed_ui, "update_reply_recipient_label");
+    stub(hashchange, "save_narrow");
+    stub(message_scroll, "hide_indicators");
+    stub(message_scroll, "show_loading_older");
+    stub(message_scroll, "hide_top_of_narrow_notices");
+    stub(notifications, "clear_compose_notifications");
+    stub(notifications, "redraw_title");
+    stub(search, "update_button_visibility");
+    stub(stream_list, "handle_narrow_activated");
+    stub(message_view_header, "initialize");
+    stub(top_left_corner, "handle_narrow_activated");
+    stub(typing_events, "render_notifications_for_narrow");
+    stub(ui_util, "change_tab_to");
+    stub(unread_ops, "process_visible");
+    stub(compose_closed_ui, "update_buttons_for_stream");
+    stub(compose_closed_ui, "update_buttons_for_private");
 
     return {
         clear: () => {
@@ -110,18 +101,17 @@ function test_helper() {
             events.push(event);
         },
         assert_events: (expected_events) => {
-            assert.deepEqual(expected_events, events);
+            assert.deepEqual(events, expected_events);
         },
     };
 }
 
 function stub_message_list() {
     message_list.MessageList = function (opts) {
-        const list = this;
         this.data = opts.data;
         this.view = {
             set_message_offset(offset) {
-                list.view.offset = offset;
+                this.offset = offset;
             },
         };
 
@@ -165,19 +155,17 @@ run_test("basics", () => {
         offset: () => ({top: 25}),
     };
 
-    current_msg_list.selected_id = () => -1;
-    current_msg_list.get_row = () => row;
+    message_lists.current.selected_id = () => -1;
+    message_lists.current.get_row = () => row;
 
-    message_list.all = {
+    all_messages_data.all_messages_data = {
         all_messages: () => messages,
         get: (msg_id) => {
             assert.equal(msg_id, selected_id);
             return selected_message;
         },
-        data: {
-            fetch_status: {
-                has_found_newest: () => true,
-            },
+        fetch_status: {
+            has_found_newest: () => true,
         },
         empty: () => false,
         first: () => ({id: 900}),
@@ -204,24 +192,25 @@ run_test("basics", () => {
     assert.equal(narrow_state.narrowed_to_pms(), false);
 
     helper.assert_events([
-        "notifications.clear_compose_notifications",
-        "notifications.redraw_title",
-        "message_scroll.hide_top_of_narrow_notices",
-        "message_scroll.hide_indicators",
-        "ui_util.change_tab_to",
-        "unread_ops.process_visible",
-        "hashchange.save_narrow",
-        "compose.update_closed_compose_buttons_for_stream",
-        "search.update_button_visibility",
-        "compose_actions.on_narrow",
-        "top_left_corner.handle_narrow_activated",
-        "stream_list.handle_narrow_activated",
-        "typing_events.render_notifications_for_narrow",
-        "message_view_header.initialize",
+        [message_scroll, "hide_top_of_narrow_notices"],
+        [message_scroll, "hide_indicators"],
+        [notifications, "clear_compose_notifications"],
+        [notifications, "redraw_title"],
+        [ui_util, "change_tab_to"],
+        [unread_ops, "process_visible"],
+        [hashchange, "save_narrow"],
+        [compose_closed_ui, "update_buttons_for_stream"],
+        [compose_closed_ui, "update_reply_recipient_label"],
+        [search, "update_button_visibility"],
+        [compose_actions, "on_narrow"],
+        [top_left_corner, "handle_narrow_activated"],
+        [stream_list, "handle_narrow_activated"],
+        [typing_events, "render_notifications_for_narrow"],
+        [message_view_header, "initialize"],
     ]);
 
-    current_msg_list.selected_id = () => -1;
-    current_msg_list.get_row = () => row;
+    message_lists.current.selected_id = () => -1;
+    message_lists.current.get_row = () => row;
     util.sorted_ids = () => [];
 
     narrow.activate([{operator: "is", operand: "private"}], {

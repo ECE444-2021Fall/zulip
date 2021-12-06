@@ -1,12 +1,14 @@
-"use strict";
+import {isValid} from "date-fns";
+import katex from "katex";
+import _ from "lodash";
 
-const katex = require("katex");
-const _ = require("lodash");
-const moment = require("moment");
+import * as emoji from "../shared/js/emoji";
+import * as fenced_code from "../shared/js/fenced_code";
+import marked from "../third/marked/lib/marked";
 
-const emoji = require("../shared/js/emoji");
-const fenced_code = require("../shared/js/fenced_code");
-const marked = require("../third/marked/lib/marked");
+import * as blueslip from "./blueslip";
+import * as linkifiers from "./linkifiers";
+import * as message_store from "./message_store";
 
 // This contains zulip's frontend Markdown implementation; see
 // docs/subsystems/markdown.md for docs on our Markdown syntax.  The other
@@ -22,9 +24,6 @@ const marked = require("../third/marked/lib/marked");
 // for example usage.
 let helpers;
 
-const realm_filter_map = new Map();
-let realm_filter_list = [];
-
 // Regexes that match some of our common backend-only Markdown syntax
 const backend_only_markdown_re = [
     // Inline image previews, check for contiguous chars ending in image suffix
@@ -38,7 +37,7 @@ const backend_only_markdown_re = [
     /\S*(?:twitter|youtube).com\/\S*/,
 ];
 
-exports.translate_emoticons_to_names = (text) => {
+export function translate_emoticons_to_names(text) {
     // Translates emoticons in a string to their colon syntax.
     let translated = text;
     let replacement_text;
@@ -76,39 +75,50 @@ exports.translate_emoticons_to_names = (text) => {
     }
 
     return translated;
-};
+}
 
-exports.contains_backend_only_syntax = function (content) {
+export function contains_backend_only_syntax(content) {
     // Try to guess whether or not a message contains syntax that only the
     // backend Markdown processor can correctly handle.
     // If it doesn't, we can immediately render it client-side for local echo.
     const markedup = backend_only_markdown_re.find((re) => re.test(content));
 
-    // If a realm filter doesn't start with some specified characters
+    // If a linkifier doesn't start with some specified characters
     // then don't render it locally. It is workaround for the fact that
     // javascript regex doesn't support lookbehind.
-    const false_filter_match = realm_filter_list.find((re) => {
-        const pattern = /[^\s"'(,:<]/.source + re[0].source + /(?!\w)/.source;
+    const linkifier_list = linkifiers.linkifier_list;
+    const false_linkifier_match = linkifier_list.find((re) => {
+        const pattern = /[^\s"'(,:<]/.source + re.pattern.source + /(?!\w)/.source;
         const regex = new RegExp(pattern);
         return regex.test(content);
     });
-    return markedup !== undefined || false_filter_match !== undefined;
-};
+    return markedup !== undefined || false_linkifier_match !== undefined;
+}
 
-exports.apply_markdown = function (message) {
+export function apply_markdown(message) {
     message_store.init_booleans(message);
 
     const options = {
         userMentionHandler(mention, silently) {
             if (mention === "all" || mention === "everyone" || mention === "stream") {
-                message.mentioned = true;
-                return `<span class="user-mention" data-user-id="*">@${_.escape(mention)}</span>`;
+                let classes;
+                let display_text;
+                if (silently) {
+                    classes = "user-mention silent";
+                    display_text = mention;
+                } else {
+                    message.mentioned = true;
+                    display_text = "@" + mention;
+                    classes = "user-mention";
+                }
+
+                return `<span class="${classes}" data-user-id="*">${_.escape(display_text)}</span>`;
             }
 
             let full_name;
             let user_id;
 
-            const id_regex = /(.+)\|(\d+)$/g; // For @**user|id** syntax
+            const id_regex = /^(.+)?\|(\d+)$/; // For @**user|id** and @**|id** syntax
             const match = id_regex.exec(mention);
 
             if (match) {
@@ -130,9 +140,20 @@ exports.apply_markdown = function (message) {
                 full_name = match[1];
                 user_id = Number.parseInt(match[2], 10);
 
-                if (!helpers.is_valid_full_name_and_user_id(full_name, user_id)) {
-                    user_id = undefined;
-                    full_name = undefined;
+                if (full_name === undefined) {
+                    // For @**|id** syntax
+                    if (!helpers.is_valid_user_id(user_id)) {
+                        // silently ignore invalid user id.
+                        user_id = undefined;
+                    } else {
+                        full_name = helpers.get_actual_name_from_user_id(user_id);
+                    }
+                } else {
+                    // For @**user|id** syntax
+                    if (!helpers.is_valid_full_name_and_user_id(full_name, user_id)) {
+                        user_id = undefined;
+                        full_name = undefined;
+                    }
                 }
             }
 
@@ -154,42 +175,65 @@ exports.apply_markdown = function (message) {
             // flags on the message itself that get used by the message
             // view code and possibly our filtering code.
 
-            if (helpers.my_user_id() === user_id && !silently) {
-                message.mentioned = true;
-                message.mentioned_me_directly = true;
-            }
-            let str = "";
-            if (silently) {
-                str += `<span class="user-mention silent" data-user-id="${_.escape(user_id)}">`;
-            } else {
-                str += `<span class="user-mention" data-user-id="${_.escape(user_id)}">@`;
-            }
-
             // If I mention "@aLiCe sMITH", I still want "Alice Smith" to
             // show in the pill.
-            const actual_full_name = helpers.get_actual_name_from_user_id(user_id);
-            return `${str}${_.escape(actual_full_name)}</span>`;
+            let display_text = helpers.get_actual_name_from_user_id(user_id);
+            let classes;
+            if (silently) {
+                classes = "user-mention silent";
+            } else {
+                if (helpers.my_user_id() === user_id) {
+                    message.mentioned = true;
+                    message.mentioned_me_directly = true;
+                }
+                classes = "user-mention";
+                display_text = "@" + display_text;
+            }
+
+            return `<span class="${classes}" data-user-id="${_.escape(user_id)}">${_.escape(
+                display_text,
+            )}</span>`;
         },
-        groupMentionHandler(name) {
+        groupMentionHandler(name, silently) {
             const group = helpers.get_user_group_from_name(name);
             if (group !== undefined) {
-                if (helpers.is_member_of_user_group(group.id, helpers.my_user_id())) {
-                    message.mentioned = true;
+                let display_text;
+                let classes;
+                if (silently) {
+                    display_text = group.name;
+                    classes = "user-group-mention silent";
+                } else {
+                    display_text = "@" + group.name;
+                    classes = "user-group-mention";
+                    if (helpers.is_member_of_user_group(group.id, helpers.my_user_id())) {
+                        message.mentioned = true;
+                    }
                 }
-                return `<span class="user-group-mention" data-user-group-id="${_.escape(
+
+                return `<span class="${classes}" data-user-group-id="${_.escape(
                     group.id,
-                )}">@${_.escape(group.name)}</span>`;
+                )}">${_.escape(display_text)}</span>`;
             }
             return undefined;
         },
         silencedMentionHandler(quote) {
             // Silence quoted mentions.
-            const user_mention_re = /<span.*user-mention.*data-user-id="(\d+|\*)"[^>]*>@/gm;
+            const user_mention_re = /<span[^>]*user-mention[^>]*data-user-id="(\d+|\*)"[^>]*>@/gm;
             quote = quote.replace(user_mention_re, (match) => {
                 match = match.replace(/"user-mention"/g, '"user-mention silent"');
                 match = match.replace(/>@/g, ">");
                 return match;
             });
+
+            // Silence quoted user group mentions.
+            const user_group_re =
+                /<span[^>]*user-group-mention[^>]*data-user-group-id="\d+"[^>]*>@/gm;
+            quote = quote.replace(user_group_re, (match) => {
+                match = match.replace(/"user-group-mention"/g, '"user-group-mention silent"');
+                match = match.replace(/>@/g, ">");
+                return match;
+            });
+
             // In most cases, if you are being mentioned in the message you're quoting, you wouldn't
             // mention yourself outside of the blockquote (and, above it). If that you do that, the
             // following mentioned status is false; the backend rendering is authoritative and the
@@ -199,22 +243,23 @@ exports.apply_markdown = function (message) {
             return quote;
         },
     };
-    // Our python-markdown processor appends two \n\n to input
+    // Our Python-Markdown processor appends two \n\n to input
     message.content = marked(message.raw_content + "\n\n", options).trim();
-    message.is_me_message = exports.is_status_message(message.raw_content);
-};
+    message.is_me_message = is_status_message(message.raw_content);
+}
 
-exports.add_topic_links = function (message) {
+export function add_topic_links(message) {
     if (message.type !== "stream") {
         message.topic_links = [];
         return;
     }
     const topic = message.topic;
-    let links = [];
+    const links = [];
+    const linkifier_list = linkifiers.linkifier_list;
 
-    for (const realm_filter of realm_filter_list) {
-        const pattern = realm_filter[0];
-        const url = realm_filter[1];
+    for (const linkifier of linkifier_list) {
+        const pattern = linkifier.pattern;
+        const url = linkifier.url_format;
         let match;
         while ((match = pattern.exec(topic)) !== null) {
             let link_url = url;
@@ -227,23 +272,30 @@ exports.add_topic_links = function (message) {
                 link_url = link_url.replace(back_ref, matched_group);
                 i += 1;
             }
-            links.push(link_url);
+            // We store the starting index as well, to sort the order of occurrence of the links
+            // in the topic, similar to the logic implemented in zerver/lib/markdown/__init__.py
+            links.push({url: link_url, text: match[0], index: topic.indexOf(match[0])});
         }
     }
 
     // Also make raw URLs navigable
     const url_re = /\b(https?:\/\/[^\s<]+[^\s"'),.:;<\]])/g; // Slightly modified from third/marked.js
-    const match = topic.match(url_re);
-    if (match) {
-        links = links.concat(match);
+    const matches = topic.match(url_re);
+    if (matches) {
+        for (const match of matches) {
+            links.push({url: match, text: match, index: topic.indexOf(match)});
+        }
     }
-
+    links.sort((a, b) => a.index - b.index);
+    for (const match of links) {
+        delete match.index;
+    }
     message.topic_links = links;
-};
+}
 
-exports.is_status_message = function (raw_content) {
+export function is_status_message(raw_content) {
     return raw_content.startsWith("/me ");
-};
+}
 
 function make_emoji_span(codepoint, title, alt_text) {
     return `<span aria-label="${_.escape(title)}" class="emoji emoji-${_.escape(
@@ -294,18 +346,14 @@ function handleEmoji(emoji_name) {
 function handleTimestamp(time) {
     let timeobject;
     if (Number.isNaN(Number(time))) {
-        // Moment throws a large deprecation warning when it has to fallback
-        // to the Date() constructor. We needn't worry here and can let backend
-        // Markdown handle any dates that moment misses.
-        moment.suppressDeprecationWarnings = true;
-        timeobject = moment(time); // not a Unix timestamp
+        timeobject = new Date(time); // not a Unix timestamp
     } else {
         // JavaScript dates are in milliseconds, Unix timestamps are in seconds
-        timeobject = moment(time * 1000);
+        timeobject = new Date(time * 1000);
     }
 
     const escaped_time = _.escape(time);
-    if (timeobject === null || !timeobject.isValid()) {
+    if (!isValid(timeobject)) {
         // Unsupported time format: rerender accordingly.
 
         // We do not show an error on these formats in local echo because
@@ -344,20 +392,6 @@ function handleStreamTopic(stream_name, topic) {
     )}" href="/${_.escape(href)}">${_.escape(text)}</a>`;
 }
 
-function handleRealmFilter(pattern, matches) {
-    let url = realm_filter_map.get(pattern);
-
-    let current_group = 1;
-
-    for (const match of matches) {
-        const back_ref = "\\" + current_group;
-        url = url.replace(back_ref, match);
-        current_group += 1;
-    }
-
-    return url;
-}
-
 function handleTex(tex, fullmatch) {
     try {
         return katex.renderToString(tex);
@@ -371,87 +405,7 @@ function handleTex(tex, fullmatch) {
     }
 }
 
-function python_to_js_filter(pattern, url) {
-    // Converts a python named-group regex to a javascript-compatible numbered
-    // group regex... with a regex!
-    const named_group_re = /\(?P<([^>]+?)>/g;
-    let match = named_group_re.exec(pattern);
-    let current_group = 1;
-    while (match) {
-        const name = match[1];
-        // Replace named group with regular matching group
-        pattern = pattern.replace("(?P<" + name + ">", "(");
-        // Replace named reference in URL to numbered reference
-        url = url.replace("%(" + name + ")s", "\\" + current_group);
-
-        // Reset the RegExp state
-        named_group_re.lastIndex = 0;
-        match = named_group_re.exec(pattern);
-
-        current_group += 1;
-    }
-    // Convert any python in-regex flags to RegExp flags
-    let js_flags = "g";
-    const inline_flag_re = /\(\?([Limsux]+)\)/;
-    match = inline_flag_re.exec(pattern);
-
-    // JS regexes only support i (case insensitivity) and m (multiline)
-    // flags, so keep those and ignore the rest
-    if (match) {
-        const py_flags = match[1].split("");
-
-        for (const flag of py_flags) {
-            if ("im".includes(flag)) {
-                js_flags += flag;
-            }
-        }
-
-        pattern = pattern.replace(inline_flag_re, "");
-    }
-    // Ideally we should have been checking that realm filters
-    // begin with certain characters but since there is no
-    // support for negative lookbehind in javascript, we check
-    // for this condition in `contains_backend_only_syntax()`
-    // function. If the condition is satisfied then the message
-    // is rendered locally, otherwise, we return false there and
-    // message is rendered on the backend which has proper support
-    // for negative lookbehind.
-    pattern = pattern + /(?!\w)/.source;
-    let final_regex = null;
-    try {
-        final_regex = new RegExp(pattern, js_flags);
-    } catch (error) {
-        // We have an error computing the generated regex syntax.
-        // We'll ignore this realm filter for now, but log this
-        // failure for debugging later.
-        blueslip.error("python_to_js_filter: " + error.message);
-    }
-    return [final_regex, url];
-}
-
-exports.update_realm_filter_rules = function (realm_filters) {
-    // Update the marked parser with our particular set of realm filters
-    realm_filter_map.clear();
-    realm_filter_list = [];
-
-    const marked_rules = [];
-
-    for (const [pattern, url] of realm_filters) {
-        const [regex, final_url] = python_to_js_filter(pattern, url);
-        if (!regex) {
-            // Skip any realm filters that could not be converted
-            continue;
-        }
-
-        realm_filter_map.set(regex, final_url);
-        realm_filter_list.push([regex, final_url]);
-        marked_rules.push(regex);
-    }
-
-    marked.InlineLexer.rules.zulip.realm_filters = marked_rules;
-};
-
-exports.initialize = function (realm_filters, helper_config) {
+export function initialize(helper_config) {
     helpers = helper_config;
 
     function disable_markdown_regex(rules, name) {
@@ -489,7 +443,7 @@ exports.initialize = function (realm_filters, helper_config) {
 
         // In this scenario, the message has to be from the user, so the only
         // requirement should be that they have the setting on.
-        return exports.translate_emoticons_to_names(src);
+        return translate_emoticons_to_names(src);
     }
 
     // Disable lheadings
@@ -510,8 +464,6 @@ exports.initialize = function (realm_filters, helper_config) {
     // Disable autolink as (a) it is not used in our backend and (b) it interferes with @mentions
     disable_markdown_regex(marked.InlineLexer.rules.zulip, "autolink");
 
-    exports.update_realm_filter_rules(realm_filters);
-
     // Tell our fenced code preprocessor how to insert arbitrary
     // HTML into the output. This generated HTML is safe to not escape
     fenced_code.set_stash_func((html) => marked.stashHtml(html, true));
@@ -529,12 +481,9 @@ exports.initialize = function (realm_filters, helper_config) {
         unicodeEmojiHandler: handleUnicodeEmoji,
         streamHandler: handleStream,
         streamTopicHandler: handleStreamTopic,
-        realmFilterHandler: handleRealmFilter,
         texHandler: handleTex,
         timestampHandler: handleTimestamp,
         renderer: r,
         preprocessors: [preprocess_code_blocks, preprocess_translate_emoticons],
     });
-};
-
-window.markdown = exports;
+}

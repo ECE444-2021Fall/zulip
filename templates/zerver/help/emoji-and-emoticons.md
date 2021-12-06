@@ -58,19 +58,18 @@ Copying and pasting emoji from other sites generally works.
 ## Change your emoji set
 
 Your emoji set determines how you see emoji. It has no effect on the emoji
-you send.
+you send. Zulip emoji are compatible with screenreaders and other accessibility tools.
 
 {start_tabs}
 
 {settings_tab|display-settings}
 
-1. Under **Emoji settings**, select **Google modern**, **Google classic**,
-   or **Twitter**.
+1. Under **Theme**, select **Google modern**, **Google classic**,
+   **Twitter** or **Plain text** for the emoji theme.
 
 {end_tabs}
 
 ## Related articles
 
-* [Add custom emoji](/help/add-custom-emoji)
+* [Add custom emoji](/help/custom-emoji)
 * [Emoji reactions](/help/emoji-reactions)
-* [View emoji as text](/help/view-emoji-as-text)

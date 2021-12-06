@@ -75,25 +75,34 @@ class zulip::postgresql_base {
   $pgroonga = zulipconf('machine', 'pgroonga', '')
   if $pgroonga == 'enabled' {
     # Needed for optional our full text search system
+
+    # Removed 2020-12 in version 4.0; these lines can be removed when
+    # we drop support for upgrading from Zulip 3 or older.
     package{"${postgresql}-pgroonga":
+      ensure  => 'purged',
+    }
+
+    package{"${postgresql}-pgdg-pgroonga":
       ensure  => 'installed',
       require => [Package[$postgresql],
                   Exec[$setup_system_deps]],
     }
 
+    $dbname = zulipconf('postgresql', 'database_name', 'zulip')
+    $dbuser = zulipconf('postgresql', 'database_user', 'zulip')
     file { $pgroonga_setup_sql_path:
       ensure  => file,
-      require => Package["${postgresql}-pgroonga"],
+      require => Package["${postgresql}-pgdg-pgroonga"],
       owner   => 'postgres',
       group   => 'postgres',
       mode    => '0640',
-      source  => 'puppet:///modules/zulip/postgresql/pgroonga_setup.sql',
+      content => template('zulip/postgresql/pgroonga_setup.sql.template.erb'),
     }
 
     exec{'create_pgroonga_extension':
       require => File[$pgroonga_setup_sql_path],
       # lint:ignore:140chars
-      command => "bash -c 'cat ${pgroonga_setup_sql_path} | su postgres -c \"psql -v ON_ERROR_STOP=1 zulip\" && touch ${pgroonga_setup_sql_path}.applied'",
+      command => "bash -c 'cat ${pgroonga_setup_sql_path} | su postgres -c \"psql -v ON_ERROR_STOP=1 ${dbname}\" && touch ${pgroonga_setup_sql_path}.applied'",
       # lint:endignore
       creates => "${pgroonga_setup_sql_path}.applied",
     }

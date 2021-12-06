@@ -14,20 +14,34 @@ outcome_to_formatted_status_map = {
     "canceled": "was canceled",
 }
 
-@webhook_view('CircleCI')
+ALL_EVENT_TYPES = list(outcome_to_formatted_status_map.keys())
+
+
+@webhook_view("CircleCI", all_event_types=ALL_EVENT_TYPES)
 @has_request_variables
-def api_circleci_webhook(request: HttpRequest, user_profile: UserProfile,
-                         payload: Dict[str, Any]=REQ(argument_type="body")) -> HttpResponse:
-    payload = payload['payload']
+def api_circleci_webhook(
+    request: HttpRequest,
+    user_profile: UserProfile,
+    payload: Dict[str, Any] = REQ(argument_type="body"),
+) -> HttpResponse:
+    payload = payload["payload"]
     subject = get_subject(payload)
     body = get_body(payload)
 
-    check_send_webhook_message(request, user_profile, subject, body)
+    check_send_webhook_message(
+        request,
+        user_profile,
+        subject,
+        body,
+        payload.get("status") if not payload.get("build_num") else payload.get("outcome"),
+    )
     return json_success()
+
 
 def get_subject(payload: Dict[str, Any]) -> str:
     repository_name = payload["reponame"]
     return f"{repository_name}"
+
 
 def get_commit_range_info(payload: Dict[str, Any]) -> str:
     commits = payload["all_commit_details"]
@@ -55,6 +69,7 @@ def get_commit_range_info(payload: Dict[str, Any]) -> str:
         first_commit_url = commits[0]["commit_url"]
         last_commit_url = commits[-1]["commit_url"]
         return f"- **Commits ({num_commits}):** [{shortened_first_commit_id}]({first_commit_url}) ... [{shortened_last_commit_id}]({last_commit_url})"
+
 
 def get_authors_and_committer_info(payload: Dict[str, Any]) -> str:
     body = ""
@@ -99,6 +114,7 @@ def get_authors_and_committer_info(payload: Dict[str, Any]) -> str:
 
     return body
 
+
 def super_minimal_body(payload: Dict[str, Any]) -> str:
     branch_name = payload["branch"]
     status = payload["status"]
@@ -106,6 +122,7 @@ def super_minimal_body(payload: Dict[str, Any]) -> str:
     build_url = payload["build_url"]
     username = payload["username"]
     return f"[Build]({build_url}) triggered by {username} on branch `{branch_name}` {formatted_status}."
+
 
 def get_body(payload: Dict[str, Any]) -> str:
     build_num = payload.get("build_num", None)
@@ -125,7 +142,7 @@ def get_body(payload: Dict[str, Any]) -> str:
     pull_request_info = ""
     if len(payload["pull_requests"]) > 0:
         pull_request_url = payload["pull_requests"][0]["url"]
-        pull_request_info = f"- **Pull Request:** {pull_request_url}"
+        pull_request_info = f"- **Pull request:** {pull_request_url}"
     authors_and_committers_info = get_authors_and_committer_info(payload)
 
     body = f"""

@@ -1,19 +1,23 @@
-"use strict";
+import $ from "jquery";
 
-exports.initialize = function () {
+import * as browser_history from "./browser_history";
+import {page_params} from "./page_params";
+import * as search_pill from "./search_pill";
+
+export let widget;
+
+export function initialize() {
     if (!page_params.search_pills_enabled) {
         return;
     }
     const container = $("#search_arrows");
-    exports.widget = search_pill.create_pills(container);
+    widget = search_pill.create_pills(container);
 
-    exports.widget.onPillRemove(() => {
-        if (exports.widget.items().length === 0) {
-            hashchange.go_to_location("");
+    widget.onPillRemove(() => {
+        if (widget.items().length === 0) {
+            browser_history.go_to_location("");
         }
     });
 
-    exports.widget.createPillonPaste(() => false);
-};
-
-window.search_pill_widget = exports;
+    widget.createPillonPaste(() => false);
+}

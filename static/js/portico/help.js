@@ -1,4 +1,7 @@
-import SimpleBar from "simplebar/dist/simplebar";
+import $ from "jquery";
+import SimpleBar from "simplebar";
+
+import * as common from "../common";
 
 import * as google_analytics from "./google-analytics";
 import {activate_correct_tab} from "./tabbed-instructions";
@@ -34,12 +37,12 @@ function highlight_current_article() {
     }
 
     const hash = window.location.hash;
-    let article = $('.help .sidebar a[href="' + path + hash + '"]');
+    let article = $(`.help .sidebar a[href="${CSS.escape(path + hash)}"]`);
     if (!article.length) {
         // If there isn't an entry in the left sidebar that matches
         // the full URL+hash pair, instead highlight an entry in the
         // left sidebar that just matches the URL part.
-        article = $('.help .sidebar a[href="' + path + '"]');
+        article = $(`.help .sidebar a[href="${CSS.escape(path)}"]`);
     }
     // Highlight current article link and the heading of the same
     article.closest("ul").css("display", "block");
@@ -141,7 +144,9 @@ if (window.location.pathname === "/help/") {
 // Remove ID attributes from sidebar links so they don't conflict with index page anchor links
 $(".help .sidebar h1, .help .sidebar h2, .help .sidebar h3").removeAttr("id");
 
-// Scroll to anchor link when clicked
+// Scroll to anchor link when clicked. Note that landing-page.js has a
+// similar function; this file and landing-page.js are never included
+// on the same page.
 $(document).on(
     "click",
     ".markdown .content h1, .markdown .content h2, .markdown .content h3",
@@ -153,6 +158,8 @@ $(document).on(
 
 $(".hamburger").on("click", () => {
     $(".sidebar").toggleClass("show");
+    $(".sidebar .simplebar-content-wrapper").css("overflow", "hidden scroll");
+    $(".sidebar .simplebar-vertical").css("visibility", "visible");
 });
 
 $(".markdown").on("click", () => {

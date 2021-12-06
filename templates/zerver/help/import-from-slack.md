@@ -18,6 +18,7 @@ into an existing Zulip organization.
 First, export your data from Slack.
 
 !!! warn ""
+
     **Note:** Only Slack owners and admins can export data from Slack.
     See Slack's
     [guide to data exports](https://get.slack.help/hc/en-us/articles/201658943-Export-data-and-message-history)
@@ -79,10 +80,10 @@ the most common configuration, run the following commands, replacing
 
 ```
 cd /home/zulip/deployments/current
-supervisorctl stop all  # Stop the Zulip server
+./scripts/stop-server
 ./manage.py convert_slack_data slack_data.zip --token <token> --output converted_slack_data
 ./manage.py import '' converted_slack_data
-./scripts/restart-server
+./scripts/start-server
 ```
 
 This could take several minutes to run, depending on how much data
@@ -101,6 +102,13 @@ root domain. Replace the last line above with the following, after replacing
 ```
 ./manage.py import <subdomain> converted_slack_data
 ```
+
+### Remove the Slack app used for export
+
+Once the import is complete, you should delete [the Slack
+app](https://api.slack.com/apps) (and thus API token) that you created
+in the earlier step.  This will prevent the token from being used to
+access your Slack instance in the future.
 
 {!import-login.md!}
 
@@ -127,6 +135,9 @@ root domain. Replace the last line above with the following, after replacing
     - Slack's `Channel creators` have no special permissions in Zulip.
 
 - The "joined #channel_name" messages are not imported.
+
+- Messages in threads are still imported, but they are not explicitly marked as
+  to be in a thread.
 
 [upgrade-zulip-from-git]: https://zulip.readthedocs.io/en/latest/production/upgrade-or-modify.html#upgrading-from-a-git-repository
 

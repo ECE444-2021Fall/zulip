@@ -2,7 +2,7 @@
 
 //  These events are not guaranteed to be perfectly
 //  representative of what the server sends.  We
-//  have a tool called check-node-fixtures that tries
+//  have a tool called check-schemas that tries
 //  to validate this data against server side schemas,
 //  but there are certain edge cases that the tool now
 //  skips.  And even when the data matches the schema,
@@ -73,7 +73,8 @@ exports.test_realm_emojis = {
     101: {
         id: "101",
         name: "spain",
-        source_url: "/some/path/to/spain.png",
+        source_url: "/some/path/to/spain.gif",
+        still_url: "/some/path/to/spain.png",
         deactivated: false,
         author_id: test_user.user_id,
     },
@@ -111,12 +112,11 @@ exports.fixtures = {
         upload_space_used: 90000,
     },
 
-    custom_profile_fields__update: {
+    custom_profile_fields: {
         type: "custom_profile_fields",
-        op: "update",
         fields: [
-            {id: 1, name: "teams", type: 1},
-            {id: 2, name: "hobbies", type: 1},
+            {id: 1, name: "teams", type: 1, hint: "", field_data: "", order: 1},
+            {id: 2, name: "hobbies", type: 1, hint: "", field_data: "", order: 2},
         ],
     },
 
@@ -168,6 +168,20 @@ exports.fixtures = {
         ],
     },
 
+    muted_users: {
+        type: "muted_users",
+        muted_users: [
+            {
+                id: 5,
+                timestamp: fake_then,
+            },
+            {
+                id: 23,
+                timestamp: fake_now,
+            },
+        ],
+    },
+
     presence: {
         type: "presence",
         email: "alice@example.com",
@@ -216,6 +230,7 @@ exports.fixtures = {
     realm__deactivated: {
         type: "realm",
         op: "deactivated",
+        realm_id: 2,
     },
 
     realm__update__bot_creation_policy: {
@@ -225,10 +240,24 @@ exports.fixtures = {
         value: 1,
     },
 
-    realm__update__create_stream_policy: {
+    realm__update__create_private_stream_policy: {
         type: "realm",
         op: "update",
-        property: "create_stream_policy",
+        property: "create_private_stream_policy",
+        value: 2,
+    },
+
+    realm__update__create_public_stream_policy: {
+        type: "realm",
+        op: "update",
+        property: "create_public_stream_policy",
+        value: 2,
+    },
+
+    realm__update__create_web_public_stream_policy: {
+        type: "realm",
+        op: "update",
+        property: "create_web_public_stream_policy",
         value: 2,
     },
 
@@ -237,13 +266,6 @@ exports.fixtures = {
         op: "update",
         property: "default_code_block_language",
         value: "javascript",
-    },
-
-    realm__update__default_twenty_four_hour_time: {
-        type: "realm",
-        op: "update",
-        property: "default_twenty_four_hour_time",
-        value: false,
     },
 
     realm__update__disallow_disposable_email_addresses: {
@@ -267,11 +289,25 @@ exports.fixtures = {
         value: false,
     },
 
+    realm__update__enable_spectator_access: {
+        type: "realm",
+        op: "update",
+        property: "enable_spectator_access",
+        value: true,
+    },
+
     realm__update__invite_required: {
         type: "realm",
         op: "update",
         property: "invite_required",
         value: false,
+    },
+
+    realm__update__invite_to_realm_policy: {
+        type: "realm",
+        op: "update",
+        property: "invite_to_realm_policy",
+        value: 2,
     },
 
     realm__update__invite_to_stream_policy: {
@@ -435,9 +471,27 @@ exports.fixtures = {
         ],
     },
 
-    realm_filters: {
-        type: "realm_filters",
-        realm_filters: [["#[123]", "ticket %(id)s", 55]],
+    realm_linkifiers: {
+        type: "realm_linkifiers",
+        realm_linkifiers: [
+            {
+                pattern: "#[123]",
+                url_format: "ticket %(id)s",
+                id: 55,
+            },
+        ],
+    },
+
+    realm_playgrounds: {
+        type: "realm_playgrounds",
+        realm_playgrounds: [
+            {
+                id: 1,
+                name: "Lean playground",
+                pygments_language: "Lean",
+                url_prefix: "https://leanprover.github.io/live/latest/#code=",
+            },
+        ],
     },
 
     realm_user__add: {
@@ -450,6 +504,8 @@ exports.fixtures = {
             is_admin: false,
             is_active: true,
             is_owner: false,
+            is_billing_admin: false,
+            role: 400,
             is_bot: false,
             is_guest: false,
             profile_data: {},
@@ -476,8 +532,33 @@ exports.fixtures = {
         },
     },
 
+    realm_user_settings_defaults__emojiset: {
+        type: "realm_user_settings_defaults",
+        op: "update",
+        property: "emojiset",
+        value: "google",
+    },
+
+    realm_user_settings_defaults__notification_sound: {
+        type: "realm_user_settings_defaults",
+        op: "update",
+        property: "notification_sound",
+        value: "ding",
+    },
+
+    realm_user_settings_defaults__presence_enabled: {
+        type: "realm_user_settings_defaults",
+        op: "update",
+        property: "presence_enabled",
+        value: false,
+    },
+
     restart: {
         type: "restart",
+        zulip_version: "4.0-dev+git",
+        zulip_merge_base: "",
+        zulip_feature_level: 55,
+        server_generation: 2,
         immediate: true,
     },
 
@@ -562,8 +643,6 @@ exports.fixtures = {
     subscription__update: {
         type: "subscription",
         op: "update",
-        email: test_user.email,
-        name: streams.devel.name,
         stream_id: streams.devel.stream_id,
         property: "pin_to_top",
         value: true,
@@ -572,6 +651,7 @@ exports.fixtures = {
     typing__start: {
         type: "typing",
         op: "start",
+        message_type: "private",
         sender: typing_person1,
         recipients: [typing_person2],
     },
@@ -579,107 +659,9 @@ exports.fixtures = {
     typing__stop: {
         type: "typing",
         op: "stop",
+        message_type: "private",
         sender: typing_person1,
         recipients: [typing_person2],
-    },
-
-    update_display_settings__color_scheme_automatic: {
-        type: "update_display_settings",
-        setting_name: "color_scheme",
-        setting: 1,
-        user: test_user.email,
-    },
-
-    update_display_settings__color_scheme_dark: {
-        type: "update_display_settings",
-        setting_name: "color_scheme",
-        setting: 2,
-        user: test_user.email,
-    },
-
-    update_display_settings__color_scheme_light: {
-        type: "update_display_settings",
-        setting_name: "color_scheme",
-        setting: 3,
-        user: test_user.email,
-    },
-
-    update_display_settings__default_language: {
-        type: "update_display_settings",
-        setting_name: "default_language",
-        setting: "fr",
-        language_name: "French",
-        user: test_user.email,
-    },
-
-    update_display_settings__demote_inactive_streams: {
-        type: "update_display_settings",
-        setting_name: "demote_inactive_streams",
-        setting: 2,
-        user: test_user.email,
-    },
-
-    update_display_settings__dense_mode: {
-        type: "update_display_settings",
-        setting_name: "dense_mode",
-        setting: true,
-        user: test_user.email,
-    },
-
-    update_display_settings__emojiset: {
-        type: "update_display_settings",
-        setting_name: "emojiset",
-        setting: "google",
-        user: test_user.email,
-    },
-
-    update_display_settings__fluid_layout_width: {
-        type: "update_display_settings",
-        setting_name: "fluid_layout_width",
-        setting: true,
-        user: test_user.email,
-    },
-
-    update_display_settings__high_contrast_mode: {
-        type: "update_display_settings",
-        setting_name: "high_contrast_mode",
-        setting: true,
-        user: test_user.email,
-    },
-
-    update_display_settings__left_side_userlist: {
-        type: "update_display_settings",
-        setting_name: "left_side_userlist",
-        setting: true,
-        user: test_user.email,
-    },
-
-    update_display_settings__starred_message_counts: {
-        type: "update_display_settings",
-        setting_name: "starred_message_counts",
-        setting: true,
-        user: test_user.email,
-    },
-
-    update_display_settings__translate_emoticons: {
-        type: "update_display_settings",
-        setting_name: "translate_emoticons",
-        setting: true,
-        user: test_user.email,
-    },
-
-    update_display_settings__twenty_four_hour_time: {
-        type: "update_display_settings",
-        setting_name: "twenty_four_hour_time",
-        setting: true,
-        user: test_user.email,
-    },
-
-    update_global_notifications: {
-        type: "update_global_notifications",
-        notification_name: "enable_stream_audible_notifications",
-        setting: true,
-        user: test_user.email,
     },
 
     update_message_flags__read: {
@@ -717,6 +699,7 @@ exports.fixtures = {
             name: "Mobile",
             description: "mobile folks",
             members: [1],
+            is_system_group: false,
         },
     },
 
@@ -725,6 +708,12 @@ exports.fixtures = {
         op: "add_members",
         group_id: 1,
         user_ids: [2],
+    },
+
+    user_group__remove: {
+        type: "user_group",
+        op: "remove",
+        group_id: 1,
     },
 
     user_group__remove_members: {
@@ -744,6 +733,140 @@ exports.fixtures = {
         },
     },
 
+    user_settings__color_scheme_automatic: {
+        type: "user_settings",
+        op: "update",
+        property: "color_scheme",
+        value: 1,
+    },
+
+    user_settings__color_scheme_dark: {
+        type: "user_settings",
+        op: "update",
+        property: "color_scheme",
+        value: 2,
+    },
+
+    user_settings__color_scheme_light: {
+        type: "user_settings",
+        op: "update",
+        property: "color_scheme",
+        value: 3,
+    },
+
+    user_settings__default_language: {
+        type: "user_settings",
+        op: "update",
+        property: "default_language",
+        value: "fr",
+        language_name: "French",
+    },
+
+    user_settings__default_view_all_messages: {
+        type: "user_settings",
+        op: "update",
+        property: "default_view",
+        value: "all_messages",
+    },
+
+    user_settings__default_view_recent_topics: {
+        type: "user_settings",
+        op: "update",
+        property: "default_view",
+        value: "recent_topics",
+    },
+
+    user_settings__demote_inactive_streams: {
+        type: "user_settings",
+        op: "update",
+        property: "demote_inactive_streams",
+        value: 2,
+    },
+
+    user_settings__dense_mode: {
+        type: "user_settings",
+        op: "update",
+        property: "dense_mode",
+        value: true,
+    },
+
+    user_settings__emojiset: {
+        type: "user_settings",
+        op: "update",
+        property: "emojiset",
+        value: "google",
+    },
+
+    user_settings__enable_stream_audible_notifications: {
+        type: "user_settings",
+        op: "update",
+        property: "enable_stream_audible_notifications",
+        value: true,
+    },
+
+    user_settings__enter_sends: {
+        type: "user_settings",
+        op: "update",
+        property: "enter_sends",
+        value: true,
+    },
+
+    user_settings__escape_navigates_to_default_view: {
+        type: "user_settings",
+        op: "update",
+        property: "escape_navigates_to_default_view",
+        value: true,
+    },
+
+    user_settings__fluid_layout_width: {
+        type: "user_settings",
+        op: "update",
+        property: "fluid_layout_width",
+        value: true,
+    },
+
+    user_settings__high_contrast_mode: {
+        type: "user_settings",
+        op: "update",
+        property: "high_contrast_mode",
+        value: true,
+    },
+
+    user_settings__left_side_userlist: {
+        type: "user_settings",
+        op: "update",
+        property: "left_side_userlist",
+        value: true,
+    },
+
+    user_settings__presence_enabled: {
+        type: "user_settings",
+        op: "update",
+        property: "presence_enabled",
+        value: false,
+    },
+
+    user_settings__starred_message_counts: {
+        type: "user_settings",
+        op: "update",
+        property: "starred_message_counts",
+        value: true,
+    },
+
+    user_settings__translate_emoticons: {
+        type: "user_settings",
+        op: "update",
+        property: "translate_emoticons",
+        value: true,
+    },
+
+    user_settings__twenty_four_hour_time: {
+        type: "user_settings",
+        op: "update",
+        property: "twenty_four_hour_time",
+        value: true,
+    },
+
     user_status__revoke_away: {
         type: "user_status",
         user_id: 63,
@@ -754,6 +877,14 @@ exports.fixtures = {
         type: "user_status",
         user_id: 55,
         away: true,
+    },
+
+    user_status__set_status_emoji: {
+        type: "user_status",
+        user_id: test_user.user_id,
+        emoji_name: "smiley",
+        emoji_code: "1f603",
+        reaction_type: "unicode_emoji",
     },
 
     user_status__set_status_text: {

@@ -1,6 +1,5 @@
-"use strict";
+import _ from "lodash";
 
-const util = require("./util");
 // How to determine the direction of a paragraph (P1-P3): https://www.unicode.org/reports/tr9/tr9-35.html#The_Paragraph_Level
 // Embedding level: https://www.unicode.org/reports/tr9/tr9-35.html#BD2
 // How to find the matching PDI for an isolation initiator: https://www.unicode.org/reports/tr9/tr9-35.html#BD9
@@ -92,11 +91,11 @@ function get_bidi_class(ch) {
     if (pdi_chars.has(ch)) {
         return "PDI";
     }
-    let i = util.lower_bound(rl_ranges, ch);
+    let i = _.sortedIndex(rl_ranges, ch);
     if (i < rl_ranges.length && (rl_ranges[i] === ch || i % 2 === 1)) {
         return "R"; // R, AL
     }
-    i = util.lower_bound(lr_ranges, ch);
+    i = _.sortedIndex(lr_ranges, ch);
     if (i < lr_ranges.length && (lr_ranges[i] === ch || i % 2 === 1)) {
         return "L";
     }
@@ -108,63 +107,45 @@ function get_bidi_class(ch) {
  * @param {string} str The string to get its direction.
  * @returns {'ltr' | 'rtl'}
  */
-exports.get_direction = function (str) {
+export function get_direction(str) {
     let isolations = 0;
-    for (let i = 0; i < str.length; i += 1) {
-        // Extracting high and low surrogates and putting them together.
-        // See https://en.wikipedia.org/wiki/UTF-16#Description or section 3 of https://tools.ietf.org/html/rfc2781.
-        let ch = str.charCodeAt(i);
-        if (ch >= 0xd800 && ch < 0xe000) {
-            // 0xd800 <= ch < 0xe000
-            // ch is inside surrogate range.
-            // If it made a surrogate pair with the next character, put them together.
-            // Otherwise, ignore the encoding error and leave it as it is.
-            if (ch < 0xdc00) {
-                const ch2 = i + 1 < str.length ? str.charCodeAt(i + 1) : 0;
-                if (ch2 >= 0xdc00 && ch2 < 0xe000) {
-                    // 0xdc00 <= ch2 < 0xe000
-                    // ch = ch & 0x3ff;
-                    ch -= 0xd800;
-                    // ch = 0x10000 | (ch << 10) | (ch2 & 0x3ff);
-                    ch = 0x10000 + ch * 0x400 + (ch2 - 0xdc00);
-                    i += 1;
+    for (const ch of str) {
+        const bidi_class = get_bidi_class(ch.codePointAt(0));
+        switch (bidi_class) {
+            case "I":
+                // LRI, RLI, FSI
+                isolations += 1;
+                break;
+            case "PDI":
+                if (isolations > 0) {
+                    isolations -= 1;
                 }
-            }
-        }
-
-        const bidi_class = get_bidi_class(ch);
-        if (bidi_class === "I") {
-            // LRI, RLI, FSI
-            isolations += 1;
-        } else if (bidi_class === "PDI") {
-            if (isolations > 0) {
-                isolations -= 1;
-            }
-        } else if (bidi_class === "R") {
-            // R, AL
-            if (isolations === 0) {
-                return "rtl";
-            }
-        } else if (bidi_class === "L") {
-            if (isolations === 0) {
-                return "ltr";
-            }
+                break;
+            case "R":
+                // R, AL
+                if (isolations === 0) {
+                    return "rtl";
+                }
+                break;
+            case "L":
+                if (isolations === 0) {
+                    return "ltr";
+                }
+                break;
         }
     }
     return "ltr";
-};
+}
 
-exports.set_rtl_class_for_textarea = function (textarea) {
+export function set_rtl_class_for_textarea(textarea) {
     // Set the rtl class if the text has an rtl direction, remove it otherwise
     let text = textarea.val();
     if (text.startsWith("```quote")) {
         text = text.slice(8);
     }
-    if (exports.get_direction(text) === "rtl") {
+    if (get_direction(text) === "rtl") {
         textarea.addClass("rtl");
     } else {
         textarea.removeClass("rtl");
     }
-};
-
-window.rtl = exports;
+}

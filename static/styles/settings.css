@@ -32,28 +32,36 @@ h3 .fa-question-circle-o {
     .block {
         display: block;
     }
+
     .center-block {
         margin: 0 auto;
     }
+
     .center {
         text-align: center;
     }
+
     .w-70 {
         width: 70%;
     }
+
     .w-200 {
         width: 200px;
     }
+
     .m-t-20 {
         margin-top: 20px;
     }
+
     .m-t-10 {
         margin-top: 10px;
     }
+
     .grid {
         label {
             min-width: 200px;
         }
+
         .warning {
             display: inline-block;
             vertical-align: top;
@@ -62,11 +70,14 @@ h3 .fa-question-circle-o {
             text-align: left;
         }
     }
-    #account-settings {
+
+    #account-settings,
+    #profile-field-settings {
         .grid {
             label {
                 min-width: 120px;
             }
+
             .warning {
                 display: block;
                 width: calc(100% - 20px - 5px);
@@ -74,19 +85,18 @@ h3 .fa-question-circle-o {
             }
         }
     }
+
     .warning {
         #pw_strength {
             width: 140px;
             height: 8px;
-            margin: 6px 0 0 0;
+            margin: 6px 0 0;
         }
     }
+
     .button {
         ul {
             text-align: left;
-        }
-        &.button i.fa.fa-pencil {
-            margin-left: 3px;
         }
     }
     /* this is because the input[type=text] is also 200px wide but has
@@ -110,11 +120,8 @@ h3 .fa-question-circle-o {
     }
 }
 
+#change_password_modal,
 #change_email_modal {
-    max-width: 460px;
-}
-
-#change_full_name_modal {
     max-width: 480px;
 }
 
@@ -133,8 +140,8 @@ h3 .fa-question-circle-o {
     padding: 0 20px;
 }
 
-#notification_sound,
-#play_notification_sound {
+.setting_notification_sound,
+.play_notification_sound {
     display: inline;
     margin-right: 4px;
 
@@ -144,6 +151,10 @@ h3 .fa-question-circle-o {
     }
 }
 
+.setting_notification_sound {
+    text-transform: capitalize;
+}
+
 .attributions_title {
     margin-top: 24px;
 }
@@ -151,10 +162,6 @@ h3 .fa-question-circle-o {
 .table {
     tbody {
         border-bottom: 1px solid hsl(0, 0%, 87%);
-    }
-
-    &.table-condensed.table-striped {
-        margin: 0;
     }
 }
 
@@ -185,9 +192,17 @@ h3 .fa-question-circle-o {
     word-break: break-all;
 }
 
-#filter-settings {
-    #filter_pattern,
-    #filter_format_string {
+#linkifier-settings {
+    #linkifier_pattern,
+    #linkifier_format_string {
+        width: calc(100% - 10em - 6em);
+    }
+}
+
+#playground-settings {
+    #playground_pygments_language,
+    #playground_name,
+    #playground_url_prefix {
         width: calc(100% - 10em - 6em);
     }
 }
@@ -231,7 +246,7 @@ td .button {
     .settings-section-title {
         font-size: 1.4em;
         font-weight: 500;
-        margin: 10px 0 10px 0;
+        margin: 10px 0;
 
         &.transparent {
             background-color: transparent;
@@ -249,16 +264,19 @@ td .button {
         }
     }
 
+    .table-sticky-headers th {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+    }
+
     .table-striped {
         table-layout: auto;
-
-        tbody {
-            border-bottom: none;
-        }
+        border-collapse: separate;
 
         thead th {
-            background-color: inherit;
             color: inherit;
+            background-color: hsl(0, 0%, 100%);
             border-top: 1px solid hsla(0, 0%, 0%, 0.2) !important;
             border-bottom: 1px solid hsla(0, 0%, 0%, 0.2) !important;
 
@@ -284,7 +302,7 @@ td .button {
 
             &[data-sort]:hover {
                 cursor: pointer;
-                background-color: hsla(0, 0%, 0%, 0.05);
+                background-color: hsla(0, 0%, 95%);
                 transition: background-color 100ms ease-in-out;
 
                 &:not(.active)::after {
@@ -332,11 +350,11 @@ td .button {
         display: inline-block;
     }
 
-    #default_language {
+    #user-display-settings .setting_default_language {
         text-decoration: none;
     }
 
-    #default_language_modal {
+    #user_default_language_modal {
         table {
             width: 90%;
             margin-top: 20px;
@@ -349,6 +367,26 @@ td .button {
 
     .inline {
         display: inline !important;
+    }
+
+    /* Messy implementation of buttons with text and a pencil icon in them
+       having spacing before the pencil icon. */
+    button.btn-link i.fa-pencil,
+    button[data-dismiss="modal"] i.fa-pencil,
+    .dropdown-toggle i.fa-pencil {
+        margin-left: 3px;
+    }
+
+    .hidden-email {
+        font-style: italic;
+    }
+
+    /* Originally the icon inherits the color of label, but when the setting
+    is disabled, the color of the label is changed and thus the icon becomes
+    too light. So, we set the color explicitly to original color of label to
+    keep the color of the icon same even when the setting is disabled. */
+    #id_realm_enable_spectator_access_label a {
+        color: hsl(0, 0%, 20%);
     }
 }
 
@@ -400,12 +438,14 @@ td .button {
 
 .button,
 .input-group {
-    margin: 0 0 20px 0;
+    margin: 0 0 20px;
 }
 
 .input-group {
-    .thinner {
-        margin: 10px 0;
+    /* Class to use when the following input-group is related and should
+       appear just after this element. */
+    &.thinner {
+        margin: 0;
     }
 
     label.checkbox + label {
@@ -432,7 +472,7 @@ input[type="checkbox"] {
     }
 
     .inline-block {
-        margin: -2px 0 0 0;
+        margin: -2px 0 0;
     }
 }
 
@@ -455,6 +495,13 @@ input[type="checkbox"] {
     }
 }
 
+.display-settings-form,
+.notification-settings-form {
+    .subsection-header h3 {
+        display: inline-block;
+    }
+}
+
 .organization-settings-parent > div:first-of-type {
     margin-top: 10px;
 }
@@ -471,7 +518,7 @@ input[type="checkbox"] {
     margin-top: 10px;
 }
 
-#default_language {
+#user-display-settings .setting_default_language {
     margin-left: 20px;
 }
 
@@ -486,19 +533,16 @@ input[type="checkbox"] {
     border-left: 0;
 }
 
-.alert-word-information-box {
-    position: relative;
-    padding: 7px;
-    margin: 2px;
-    width: 50%;
-}
-
 .green-bg {
     background-color: hsl(120, 29%, 84%);
 }
 
 .remove-alert-word {
     margin-top: 1px;
+}
+
+.alert_word_status_text {
+    word-break: break-word;
 }
 
 .alert-notification {
@@ -513,7 +557,6 @@ input[type="checkbox"] {
     margin-left: 10px;
     color: hsl(156, 30%, 50%);
     padding: 3px 10px;
-    font-size: 15px;
 
     &:not(:empty) {
         border: 1px solid hsl(156, 30%, 50%);
@@ -552,12 +595,12 @@ input[type="checkbox"] {
     margin-top: 4px;
 }
 
-#notification-settings {
+#user-notification-settings {
     .notification-reminder {
         text-align: left;
     }
 
-    #notification-table {
+    .notification-table {
         th,
         td {
             text-align: center;
@@ -578,16 +621,20 @@ input[type="checkbox"] {
     }
 }
 
-#account-settings {
-    .custom-profile-fields-form .custom_user_field label {
+#profile-settings {
+    .custom-profile-fields-form .custom_user_field label,
+    .full-name-change-form label,
+    .timezone-setting-form label {
         min-width: fit-content;
     }
 
-    .alert-notification.custom-field-status {
+    .alert-notification.custom-field-status,
+    .alert-notification.full-name-status,
+    .alert-notification.timezone-setting-status,
+    .alert-notification.presence-setting-status {
         padding-top: 0;
         padding-bottom: 0;
         margin-top: 0;
-        font-size: 14px;
         padding-left: 0;
         margin-left: 5px;
         border: none;
@@ -600,11 +647,6 @@ input[type="checkbox"] {
     &.enabled {
         color: hsl(0, 0%, 20%);
     }
-}
-
-.disableable {
-    margin-left: 22px;
-    margin-top: -10px;
 }
 
 .admin-realm-message-content-delete-limit-minutes {
@@ -664,7 +706,8 @@ input[type="checkbox"] {
 }
 
 .add-new-profile-field-box,
-.add-new-filter-box {
+.add-new-linkifier-box,
+.add-new-playground-box {
     button {
         margin-left: calc(10em + 20px) !important;
     }
@@ -678,10 +721,12 @@ input[type="checkbox"] {
 .profile_field_choices_table {
     .movable-profile-field-row {
         cursor: move;
+
         .fa-ellipsis-v {
             color: hsl(0, 0, 75%);
             position: relative;
             top: 1px;
+
             + i {
                 margin-right: 5px;
             }
@@ -689,9 +734,9 @@ input[type="checkbox"] {
     }
 }
 
-#admin-filter-pattern-status,
-#admin-filter-format-status {
-    margin: 20px 0 0 0;
+#admin-linkifier-pattern-status,
+#admin-linkifier-format-status {
+    margin: 20px 0 0;
 }
 
 .progressive-table-wrapper {
@@ -806,7 +851,7 @@ input[type="checkbox"] {
     }
 
     .api_key .api-key-value-and-button {
-        font-family: Inconsolata, Menlo, monospace;
+        font-family: "Source Code Pro", monospace;
         font-size: 0.85em;
         display: flex;
     }
@@ -832,6 +877,10 @@ input[type="checkbox"] {
     font-weight: 400;
 }
 
+.bot_edit_errors {
+    margin: 0;
+}
+
 #bots_lists_navbar .active a {
     background-color: hsl(0, 0%, 98%);
 }
@@ -840,8 +889,11 @@ input[type="checkbox"] {
     margin-top: 5px;
 }
 
-.edit_bot_form_container {
-    padding: 15px;
+#edit_bot_modal {
+    /* Ensure that the dropdown can overflow the modal. */
+    .modal__content {
+        overflow: visible;
+    }
 }
 
 .edit_bot_form {
@@ -857,7 +909,7 @@ input[type="checkbox"] {
     }
 
     .buttons {
-        margin: 10px 0 5px 0;
+        margin: 10px 0 5px;
     }
 }
 
@@ -877,7 +929,8 @@ input[type="checkbox"] {
 #create_bot_form,
 #create_alert_word_form,
 .admin-emoji-form,
-.admin-filter-form,
+.admin-linkifier-form,
+.admin-playground-form,
 .admin-profile-field-form,
 .edit_bot_form {
     .control-label {
@@ -918,7 +971,6 @@ input[type="checkbox"] {
     }
 
     .alert_word_listing .value {
-        display: block;
         word-wrap: break-word;
         word-break: break-all;
         white-space: normal;
@@ -934,6 +986,45 @@ input[type="checkbox"] {
     }
 }
 
+#change_password_modal {
+    .change_password_info,
+    #change_password_container {
+        margin: 0;
+    }
+}
+
+#api_key_status {
+    margin: 0;
+}
+
+#download_zuliprc {
+    color: hsl(0, 0%, 100%);
+    text-decoration: none;
+}
+
+#api_key_form,
+#change_password_modal {
+    .password-div {
+        position: relative;
+
+        input[type="text"] {
+            margin-bottom: 10px;
+        }
+
+        .password_visibility_toggle {
+            position: absolute;
+            left: 194px;
+            top: 32px;
+            width: 14px;
+            opacity: 0.6;
+
+            &:hover {
+                opacity: 1;
+            }
+        }
+    }
+}
+
 .emojiset_choices {
     width: 250px;
     padding: 0 10px;
@@ -945,7 +1036,7 @@ input[type="checkbox"] {
 
     label {
         border-bottom: 1px solid hsla(0, 0%, 0%, 0.2);
-        padding: 8px 0 10px 0;
+        padding: 8px 0 10px;
 
         &:last-of-type {
             border-bottom: none;
@@ -1005,6 +1096,7 @@ input[type="checkbox"] {
         span[contenteditable] {
             display: inline-block;
             word-break: break-all;
+
             &:empty::before {
                 opacity: 0.5;
                 display: inline-block;
@@ -1045,9 +1137,11 @@ input[type="checkbox"] {
 
     .ntm {
         cursor: not-allowed;
+
         h4 > .button {
             cursor: not-allowed;
             display: none;
+
             &:hover {
                 border-color: hsl(4, 56%, 82%);
             }
@@ -1093,14 +1187,14 @@ input[type="checkbox"] {
     .save-discard-widget-button {
         border-radius: 5px;
         border: 1px solid hsl(0, 0%, 80%);
-        font-size: 14px;
         padding: 3px 14px 4px 11px;
         text-decoration: none;
         color: hsl(0, 0%, 47%);
         min-width: 80px;
-        line-height: 16px;
+        line-height: 1.2;
 
-        &:hover {
+        &:hover,
+        &:focus {
             background-color: hsl(0, 0%, 100%);
             border: 1px solid hsl(0, 0%, 61%);
             color: hsl(0, 0%, 18%);
@@ -1115,7 +1209,8 @@ input[type="checkbox"] {
             color: hsl(0, 0%, 100%);
             border: 1px solid hsl(155, 30%, 50%);
 
-            &:hover {
+            &:hover,
+            &:focus {
                 background-color: hsl(166, 35%, 57%);
                 border: 1px solid hsl(166, 35%, 57%);
             }
@@ -1132,9 +1227,8 @@ input[type="checkbox"] {
         }
 
         .save-discard-widget-button-icon {
-            vertical-align: bottom;
+            vertical-align: middle;
             margin-right: 3px;
-            margin-bottom: 1px;
             font-size: 15px;
             font-weight: 500;
         }
@@ -1191,7 +1285,7 @@ input[type="checkbox"] {
 
     input.search {
         font-size: 0.9rem;
-        margin: 10px 0 20px 0;
+        margin: 10px 0 20px;
     }
 
     .form-sidebar {
@@ -1318,7 +1412,7 @@ input[type="checkbox"] {
             .icon {
                 width: 18px;
                 height: 18px;
-                margin: 10px 10px;
+                margin: 10px;
                 text-align: center;
 
                 font-size: 1.4em;
@@ -1353,6 +1447,13 @@ input[type="checkbox"] {
         .normal-settings-list,
         .org-settings-list {
             position: relative;
+        }
+
+        .settings-sticky-bar {
+            position: sticky;
+            z-index: 1;
+            background-color: hsl(0, 0%, 100%);
+            top: 0;
         }
     }
 
@@ -1391,49 +1492,12 @@ input[type="checkbox"] {
         .exit-sign {
             float: right;
             position: relative;
-            top: 3px;
+            top: 1px;
             margin-left: 3px;
             font-size: 1.5rem;
+            line-height: 1;
             font-weight: 600;
             cursor: pointer;
-        }
-    }
-
-    #change_password_modal {
-        width: auto;
-    }
-
-    .custom_user_field {
-        padding-bottom: 20px;
-
-        textarea {
-            width: 320px;
-            height: 80px;
-        }
-
-        &:hover .remove_date {
-            display: inline-flex;
-        }
-
-        .remove_date {
-            opacity: 0.5;
-            display: none;
-            cursor: pointer;
-            position: relative;
-            top: 2px;
-            left: -20px;
-
-            &:hover {
-                opacity: 1;
-            }
-        }
-
-        .datepicker {
-            cursor: default;
-        }
-
-        .person_picker {
-            min-width: 206px;
         }
     }
 
@@ -1474,41 +1538,53 @@ input[type="checkbox"] {
         width: 245px;
     }
 
-    #change_full_name_modal .change_full_name_info,
-    #change_email_modal .change_email_info,
-    #change_password_modal .change_password_info,
-    #api_key_modal #api_key_status {
+    #change_email_modal .change_email_info {
         margin-top: 3px;
     }
 }
 
-.modal {
-    box-shadow: 0 0 75px hsla(0, 0%, 0%, 0.5);
-    outline: 10000px solid hsla(0, 0%, 0%, 0.3);
-    border: none;
-    border-radius: 0;
-
-    &.fade {
-        /* Ensure the modal is entirely off-screen while we fade the background */
-        top: -50%;
-        transition: opacity 0.3s linear;
-        transform: translateY(-50%);
-
-        &.in {
-            top: 50%;
-            pointer-events: all;
-        }
-    }
-}
-
-#account-settings,
-#admin-human-form {
+#profile-settings,
+#edit-user-form {
     .user-role button {
         cursor: default;
     }
 
-    .custom_user_field .field_hint {
-        color: hsl(0, 0%, 67%);
+    .custom_user_field {
+        padding-bottom: 20px;
+
+        .field_hint {
+            color: hsl(0, 0%, 67%);
+        }
+
+        textarea {
+            width: 320px;
+            height: 80px;
+        }
+
+        &:hover .remove_date {
+            display: inline-flex;
+        }
+
+        .remove_date {
+            opacity: 0.5;
+            display: none;
+            cursor: pointer;
+            position: relative;
+            top: 2px;
+            left: -20px;
+
+            &:hover {
+                opacity: 1;
+            }
+        }
+
+        .datepicker {
+            cursor: default;
+        }
+
+        .person_picker {
+            min-width: 206px;
+        }
     }
 
     #show_my_user_profile_modal {
@@ -1522,23 +1598,29 @@ input[type="checkbox"] {
     }
 }
 
-body:not(.night-mode) #settings_page .custom_user_field .datepicker {
-    background-color: hsl(0, 0%, 100%);
-}
-
-#confirm_dialog_modal,
-#deactivation_user_modal.fade.in {
-    top: calc(50% - 120px);
-}
-
-#desktop_icon_count_display,
+/* These have enough space for all the options in German. */
+.setting_desktop_icon_count_display,
 #id_realm_waiting_period_setting,
-#id_realm_create_stream_policy,
+#id_realm_create_public_stream_policy,
+#id_realm_create_private_stream_policy,
 #id_realm_invite_to_stream_policy,
-#id_realm_org_join_restrictions,
+#id_realm_private_message_policy,
+#id_realm_add_custom_emoji_policy,
+#id_realm_user_group_edit_policy,
+#id_realm_email_address_visibility,
+#id_realm_wildcard_mention_policy,
+#id_realm_move_messages_between_streams_policy,
+#id_realm_invite_to_realm_policy,
+#id_realm_edit_topic_policy,
+#id_realm_msg_edit_limit_setting,
+#id_realm_delete_own_message_policy,
+#id_realm_msg_delete_limit_setting {
+    width: 325px;
+}
+
 #id_realm_bot_creation_policy,
-#id_realm_user_invite_restriction,
-#id_realm_wildcard_mention_policy {
+#id_realm_giphy_rating,
+#id_realm_org_join_restrictions {
     width: 100%;
 }
 
@@ -1546,29 +1628,47 @@ body:not(.night-mode) #settings_page .custom_user_field .datepicker {
     margin-top: 10px;
 }
 
-#do_deactivate_self_button .loader {
-    display: none;
-    vertical-align: top;
-    position: relative;
-    height: 30px;
-    margin-top: -10px;
-    top: 5px;
-}
-
 .dropdown-list-widget {
-    button {
-        margin: 0 5px;
+    button.dropdown-toggle {
+        text-align: left;
 
-        &.dropdown_list_reset_button {
-            /* Prevent night mode from overriding background. */
-            background: unset !important;
-            border: none;
+        .fa-chevron-down {
+            float: right;
+            position: relative;
+            top: 2px;
+            padding-left: 5px;
+            color: hsl(0, 0%, 58%);
+            font-weight: lighter;
+        }
 
-            &:disabled {
-                display: none;
+        &.dropdown-toggle {
+            /* Match settings for select elements. */
+            padding: 4px 6px;
+
+            span {
+                line-height: 20px;
+                height: 1.4em;
             }
         }
+
         &:disabled i {
+            display: none;
+        }
+    }
+
+    button.multiselect_btn {
+        /* Matches the dropdown input margin so as to keep it aligned */
+        margin-left: 9px;
+        margin-top: 4px;
+    }
+
+    a.dropdown_list_reset_button {
+        /* Prevent dark theme from overriding background. */
+        background: unset !important;
+        border: none;
+        margin-left: 10px;
+
+        &:disabled {
             display: none;
         }
     }
@@ -1681,7 +1781,7 @@ body:not(.night-mode) #settings_page .custom_user_field .datepicker {
 @supports (-moz-appearance: none) {
     #settings_page select {
         appearance: none;
-        background: hsl(0, 0%, 100%) url(../images/dropdown.png) right / 20px
+        background: hsl(0, 0%, 100%) url("../images/dropdown.png") right / 20px
             no-repeat;
         padding-right: 20px;
     }
@@ -1758,10 +1858,11 @@ body:not(.night-mode) #settings_page .custom_user_field .datepicker {
 }
 
 .admin_exports_table {
-    margin: 20px;
+    margin-top: 20px;
+    margin-bottom: 20px;
 }
 
-@media (max-width: 953px) {
+@media (width < $lg_min) {
     .user-avatar-section,
     .realm-icon-section {
         float: none;
@@ -1778,13 +1879,13 @@ body:not(.night-mode) #settings_page .custom_user_field .datepicker {
     }
 
     .subsection-failed-status p {
-        margin: 5px 0 0 0;
+        margin: 5px 0 0;
     }
 }
 
 /* This value needs to match with the same in subscriptions.css, as
    we have some shared styles declared there */
-@media (max-width: 750px) {
+@media (width < $md_min) {
     #settings_overlay_container {
         /* this variable allows JavaScript to detect this media query */
         --single-column: yes;
@@ -1829,17 +1930,19 @@ body:not(.night-mode) #settings_page .custom_user_field .datepicker {
     }
 }
 
-@media (max-width: 480px) {
+@media (width < $sm_min) {
     #pw_strength {
         margin: auto;
     }
 
-    #filter-settings .new-filter-form,
+    #linkifier-settings .new-linkifier-form,
+    #playground-settings .new-playground-form,
     #profile-field-settings .new-profile-field-form {
         width: 100%;
     }
 
-    #filter-settings .new-filter-form .control-label,
+    #linkifier-settings .new-linkifier-form .control-label,
+    #playground-settings .new-playground-form .control-label,
     #profile-field-settings .new-profile-field-form .control-label {
         display: block;
         width: 120px;
@@ -1850,7 +1953,8 @@ body:not(.night-mode) #settings_page .custom_user_field .datepicker {
         float: none;
     }
 
-    #filter-settings .new-filter-form .controls,
+    #linkifier-settings .new-linkifier-form .controls,
+    #playground-settings .new-playground-form .controls,
     #profile-field-settings .new-profile-field-form .controls {
         margin: auto;
         text-align: center;
@@ -1858,36 +1962,47 @@ body:not(.night-mode) #settings_page .custom_user_field .datepicker {
 
     #settings_page .save-button-controls {
         display: block;
-        margin: 10px 0 0 0;
+        margin: 10px 0 0;
     }
 }
 
-@media (max-width: 450px) {
+@media (width < $ml_min) {
     #api_key_buttons,
     #download_zuliprc {
         flex-direction: column;
         margin-top: 5px;
     }
-}
 
-@media (max-width: 430px) {
-    /* selects the label (inline-block)
-       immediately following the checkbox */
-    .settings-box .checkbox + .inline-block {
-        width: calc(100% - 25px);
+    #settings_page,
+    #edit-user-form {
+        .custom_user_field textarea {
+            width: calc(100% - 25px);
+        }
     }
 }
 
-@media only screen and (min-width: 700px) and (max-width: 875px) {
+@media only screen and (width < $lg_min) {
+    /* Show bot-information-box at full width on small
+       screen sizes. Not having this media query breaks the
+       information box */
     .bots_list .bot-information-box {
         width: calc(100% - 10px);
         max-height: unset;
     }
 }
 
-@media only screen and (max-width: 625px) {
-    .bots_list .bot-information-box {
-        width: calc(100% - 10px);
-        max-height: unset;
+#edit-linkifier-form {
+    #edit-linkifier-pattern,
+    #edit-linkifier-url-format-string {
+        width: 400px;
+    }
+
+    label {
+        margin-bottom: 4px;
+    }
+
+    #edit-linkifier-pattern-status,
+    #edit-linkifier-format-status {
+        margin-top: 10px;
     }
 }
