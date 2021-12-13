@@ -1048,6 +1048,15 @@ class RealmEmoji(models.Model):
     def __str__(self) -> str:
         return f"<RealmEmoji({self.realm.string_id}): {self.id} {self.name} {self.deactivated} {self.file_name}>"
 
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["realm", "name"],
+                condition=Q(deactivated=False),
+                name="unique_realm_emoji_when_false_deactivated",
+            ),
+        ]
+
 
 def get_realm_emoji_dicts(
     realm: Realm, only_active_emojis: bool = False
@@ -3837,7 +3846,7 @@ class AbstractRealmAuditLog(models.Model):
     USER_AVATAR_SOURCE_CHANGED = 123
     USER_FULL_NAME_CHANGED = 124
     USER_EMAIL_CHANGED = 125
-    USER_TOS_VERSION_CHANGED = 126
+    USER_TERMS_OF_SERVICE_VERSION_CHANGED = 126
     USER_API_KEY_CHANGED = 127
     USER_BOT_OWNER_CHANGED = 128
     USER_DEFAULT_SENDING_STREAM_CHANGED = 129

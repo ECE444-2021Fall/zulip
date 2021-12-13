@@ -745,7 +745,7 @@ def do_activate_mirror_dummy_user(
         user_profile.is_mirror_dummy = False
         user_profile.set_unusable_password()
         user_profile.date_joined = timezone_now()
-        user_profile.tos_version = settings.TOS_VERSION
+        user_profile.tos_version = settings.TERMS_OF_SERVICE_VERSION
         user_profile.save(
             update_fields=["date_joined", "password", "is_mirror_dummy", "tos_version"]
         )
@@ -873,24 +873,26 @@ def do_set_realm_authentication_methods(
     realm: Realm, authentication_methods: Dict[str, bool], *, acting_user: Optional[UserProfile]
 ) -> None:
     old_value = realm.authentication_methods_dict()
-    for key, value in list(authentication_methods.items()):
-        index = getattr(realm.authentication_methods, key).number
-        realm.authentication_methods.set_bit(index, int(value))
-    realm.save(update_fields=["authentication_methods"])
-    updated_value = realm.authentication_methods_dict()
-    RealmAuditLog.objects.create(
-        realm=realm,
-        event_type=RealmAuditLog.REALM_PROPERTY_CHANGED,
-        event_time=timezone_now(),
-        acting_user=acting_user,
-        extra_data=orjson.dumps(
-            {
-                RealmAuditLog.OLD_VALUE: old_value,
-                RealmAuditLog.NEW_VALUE: updated_value,
-                "property": "authentication_methods",
-            }
-        ).decode(),
-    )
+    with transaction.atomic():
+        for key, value in list(authentication_methods.items()):
+            index = getattr(realm.authentication_methods, key).number
+            realm.authentication_methods.set_bit(index, int(value))
+        realm.save(update_fields=["authentication_methods"])
+        updated_value = realm.authentication_methods_dict()
+        RealmAuditLog.objects.create(
+            realm=realm,
+            event_type=RealmAuditLog.REALM_PROPERTY_CHANGED,
+            event_time=timezone_now(),
+            acting_user=acting_user,
+            extra_data=orjson.dumps(
+                {
+                    RealmAuditLog.OLD_VALUE: old_value,
+                    RealmAuditLog.NEW_VALUE: updated_value,
+                    "property": "authentication_methods",
+                }
+            ).decode(),
+        )
+
     event = dict(
         type="realm",
         op="update_dict",
@@ -925,24 +927,26 @@ def do_set_realm_message_editing(
         edit_topic_policy=edit_topic_policy,
     )
 
-    for updated_property, updated_value in updated_properties.items():
-        if updated_value == old_values[updated_property]:
-            continue
-        RealmAuditLog.objects.create(
-            realm=realm,
-            event_type=RealmAuditLog.REALM_PROPERTY_CHANGED,
-            event_time=event_time,
-            acting_user=acting_user,
-            extra_data=orjson.dumps(
-                {
-                    RealmAuditLog.OLD_VALUE: old_values[updated_property],
-                    RealmAuditLog.NEW_VALUE: updated_value,
-                    "property": updated_property,
-                }
-            ).decode(),
-        )
+    with transaction.atomic():
+        for updated_property, updated_value in updated_properties.items():
+            if updated_value == old_values[updated_property]:
+                continue
+            RealmAuditLog.objects.create(
+                realm=realm,
+                event_type=RealmAuditLog.REALM_PROPERTY_CHANGED,
+                event_time=event_time,
+                acting_user=acting_user,
+                extra_data=orjson.dumps(
+                    {
+                        RealmAuditLog.OLD_VALUE: old_values[updated_property],
+                        RealmAuditLog.NEW_VALUE: updated_value,
+                        "property": updated_property,
+                    }
+                ).decode(),
+            )
 
-    realm.save(update_fields=list(updated_properties.keys()))
+        realm.save(update_fields=list(updated_properties.keys()))
+
     event = dict(
         type="realm",
         op="update_dict",
@@ -957,22 +961,23 @@ def do_set_realm_notifications_stream(
 ) -> None:
     old_value = realm.notifications_stream_id
     realm.notifications_stream = stream
-    realm.save(update_fields=["notifications_stream"])
+    with transaction.atomic():
+        realm.save(update_fields=["notifications_stream"])
 
-    event_time = timezone_now()
-    RealmAuditLog.objects.create(
-        realm=realm,
-        event_type=RealmAuditLog.REALM_PROPERTY_CHANGED,
-        event_time=event_time,
-        acting_user=acting_user,
-        extra_data=orjson.dumps(
-            {
-                RealmAuditLog.OLD_VALUE: old_value,
-                RealmAuditLog.NEW_VALUE: stream_id,
-                "property": "notifications_stream",
-            }
-        ).decode(),
-    )
+        event_time = timezone_now()
+        RealmAuditLog.objects.create(
+            realm=realm,
+            event_type=RealmAuditLog.REALM_PROPERTY_CHANGED,
+            event_time=event_time,
+            acting_user=acting_user,
+            extra_data=orjson.dumps(
+                {
+                    RealmAuditLog.OLD_VALUE: old_value,
+                    RealmAuditLog.NEW_VALUE: stream_id,
+                    "property": "notifications_stream",
+                }
+            ).decode(),
+        )
 
     event = dict(
         type="realm",
@@ -988,22 +993,23 @@ def do_set_realm_signup_notifications_stream(
 ) -> None:
     old_value = realm.signup_notifications_stream_id
     realm.signup_notifications_stream = stream
-    realm.save(update_fields=["signup_notifications_stream"])
+    with transaction.atomic():
+        realm.save(update_fields=["signup_notifications_stream"])
 
-    event_time = timezone_now()
-    RealmAuditLog.objects.create(
-        realm=realm,
-        event_type=RealmAuditLog.REALM_PROPERTY_CHANGED,
-        event_time=event_time,
-        acting_user=acting_user,
-        extra_data=orjson.dumps(
-            {
-                RealmAuditLog.OLD_VALUE: old_value,
-                RealmAuditLog.NEW_VALUE: stream_id,
-                "property": "signup_notifications_stream",
-            }
-        ).decode(),
-    )
+        event_time = timezone_now()
+        RealmAuditLog.objects.create(
+            realm=realm,
+            event_type=RealmAuditLog.REALM_PROPERTY_CHANGED,
+            event_time=event_time,
+            acting_user=acting_user,
+            extra_data=orjson.dumps(
+                {
+                    RealmAuditLog.OLD_VALUE: old_value,
+                    RealmAuditLog.NEW_VALUE: stream_id,
+                    "property": "signup_notifications_stream",
+                }
+            ).decode(),
+        )
     event = dict(
         type="realm",
         op="update",
@@ -1099,19 +1105,20 @@ def do_deactivate_realm(realm: Realm, *, acting_user: Optional[UserProfile]) -> 
 
 def do_reactivate_realm(realm: Realm) -> None:
     realm.deactivated = False
-    realm.save(update_fields=["deactivated"])
+    with transaction.atomic():
+        realm.save(update_fields=["deactivated"])
 
-    event_time = timezone_now()
-    RealmAuditLog.objects.create(
-        realm=realm,
-        event_type=RealmAuditLog.REALM_REACTIVATED,
-        event_time=event_time,
-        extra_data=orjson.dumps(
-            {
-                RealmAuditLog.ROLE_COUNT: realm_user_count_by_role(realm),
-            }
-        ).decode(),
-    )
+        event_time = timezone_now()
+        RealmAuditLog.objects.create(
+            realm=realm,
+            event_type=RealmAuditLog.REALM_REACTIVATED,
+            event_time=event_time,
+            extra_data=orjson.dumps(
+                {
+                    RealmAuditLog.ROLE_COUNT: realm_user_count_by_role(realm),
+                }
+            ).decode(),
+        )
 
 
 def do_change_realm_subdomain(
@@ -1131,21 +1138,25 @@ def do_change_realm_subdomain(
     # deleting, clear that state.
     realm.demo_organization_scheduled_deletion_date = None
     realm.string_id = new_subdomain
-    realm.save(update_fields=["string_id", "demo_organization_scheduled_deletion_date"])
-    RealmAuditLog.objects.create(
-        realm=realm,
-        event_type=RealmAuditLog.REALM_SUBDOMAIN_CHANGED,
-        event_time=timezone_now(),
-        acting_user=acting_user,
-        extra_data={"old_subdomain": old_subdomain, "new_subdomain": new_subdomain},
-    )
+    with transaction.atomic():
+        realm.save(update_fields=["string_id", "demo_organization_scheduled_deletion_date"])
+        RealmAuditLog.objects.create(
+            realm=realm,
+            event_type=RealmAuditLog.REALM_SUBDOMAIN_CHANGED,
+            event_time=timezone_now(),
+            acting_user=acting_user,
+            extra_data={"old_subdomain": old_subdomain, "new_subdomain": new_subdomain},
+        )
 
-    # If a realm if being renamed multiple times, we should find all the placeholder
-    # realms and reset their deactivated_redirect field to point to the new realm uri
-    placeholder_realms = Realm.objects.filter(deactivated_redirect=old_uri, deactivated=True)
-    for placeholder_realm in placeholder_realms:
-        do_add_deactivated_redirect(placeholder_realm, realm.uri)
+        # If a realm if being renamed multiple times, we should find all the placeholder
+        # realms and reset their deactivated_redirect field to point to the new realm uri
+        placeholder_realms = Realm.objects.filter(deactivated_redirect=old_uri, deactivated=True)
+        for placeholder_realm in placeholder_realms:
+            do_add_deactivated_redirect(placeholder_realm, realm.uri)
 
+    # The below block isn't executed in a transaction with the earlier code due to
+    # the functions called below being complex and potentially sending events,
+    # which we don't want to do in atomic blocks.
     # When we change a realm's subdomain the realm with old subdomain is basically
     # deactivated. We are creating a deactivated realm using old subdomain and setting
     # it's deactivated redirect to new_subdomain so that we can tell the users that
@@ -4438,7 +4449,7 @@ def do_change_tos_version(user_profile: UserProfile, tos_version: str) -> None:
         realm=user_profile.realm,
         acting_user=user_profile,
         modified_user=user_profile,
-        event_type=RealmAuditLog.USER_TOS_VERSION_CHANGED,
+        event_type=RealmAuditLog.USER_TERMS_OF_SERVICE_VERSION_CHANGED,
         event_time=event_time,
     )
 
@@ -7385,9 +7396,13 @@ def notify_realm_emoji(realm: Realm) -> None:
 def check_add_realm_emoji(
     realm: Realm, name: str, author: UserProfile, image_file: IO[bytes]
 ) -> Optional[RealmEmoji]:
-    realm_emoji = RealmEmoji(realm=realm, name=name, author=author)
-    realm_emoji.full_clean()
-    realm_emoji.save()
+    try:
+        realm_emoji = RealmEmoji(realm=realm, name=name, author=author)
+        realm_emoji.full_clean()
+        realm_emoji.save()
+    except django.db.utils.IntegrityError:
+        # Match the string in upload_emoji.
+        raise JsonableError(_("A custom emoji with this name already exists."))
 
     emoji_file_name = get_emoji_file_name(image_file.name, realm_emoji.id)
 

@@ -28,6 +28,7 @@ from typing_extensions import TypedDict
 import zerver.lib.upload
 from analytics.models import RealmCount, StreamCount, UserCount
 from scripts.lib.zulip_tools import overwrite_symlink
+from zerver.decorator import cachify
 from zerver.lib.avatar_hash import user_avatar_path_from_ids
 from zerver.lib.pysa import mark_sanitized
 from zerver.lib.upload import get_bucket
@@ -66,7 +67,6 @@ from zerver.models import (
     UserProfile,
     UserStatus,
     UserTopic,
-    get_display_recipient,
     get_realm,
     get_system_bot,
     get_user_profile_by_id,
@@ -1248,7 +1248,7 @@ def export_partial_message_files(
         messages_we_received = Message.objects.filter(
             sender__in=ids_of_our_possible_senders,
             recipient__in=recipient_ids_for_us,
-        ).order_by("id")
+        )
 
         # For the public stream export, we only need the messages those streams received.
         message_queries = [
@@ -1261,7 +1261,7 @@ def export_partial_message_files(
         messages_we_received = Message.objects.filter(
             sender__in=ids_of_our_possible_senders,
             recipient__in=recipient_ids_for_us,
-        ).order_by("id")
+        )
 
         # The above query is missing some messages that consenting
         # users have access to, namely, PMs sent by one of the users
@@ -1280,7 +1280,7 @@ def export_partial_message_files(
         messages_we_sent_to_them = Message.objects.filter(
             sender__in=consented_user_ids,
             recipient__in=recipient_ids_for_them,
-        ).order_by("id")
+        )
 
         message_queries = [
             messages_we_received,
@@ -1288,43 +1288,42 @@ def export_partial_message_files(
         ]
 
     all_message_ids: Set[int] = set()
-    dump_file_id = 1
 
     for message_query in message_queries:
-        dump_file_id = write_message_partial_for_query(
-            realm=realm,
-            message_query=message_query,
-            dump_file_id=dump_file_id,
-            all_message_ids=all_message_ids,
-            output_dir=output_dir,
-            user_profile_ids=user_ids_for_us,
-            chunk_size=chunk_size,
-        )
+        message_ids = set(get_id_list_gently_from_database(base_query=message_query, id_field="id"))
+
+        # We expect our queries to be disjoint, although this assertion
+        # isn't strictly necessary if you don't mind a little bit of
+        # overhead.
+        assert len(message_ids.intersection(all_message_ids)) == 0
+
+        all_message_ids |= message_ids
+
+    message_id_chunks = chunkify(sorted(list(all_message_ids)), chunk_size=MESSAGE_BATCH_CHUNK_SIZE)
+
+    write_message_partials(
+        realm=realm,
+        message_id_chunks=message_id_chunks,
+        output_dir=output_dir,
+        user_profile_ids=user_ids_for_us,
+    )
 
     return all_message_ids
 
 
-def write_message_partial_for_query(
+def write_message_partials(
+    *,
     realm: Realm,
-    message_query: Any,
-    dump_file_id: int,
-    all_message_ids: Set[int],
+    message_id_chunks: List[List[int]],
     output_dir: Path,
     user_profile_ids: Set[int],
-    chunk_size: int = MESSAGE_BATCH_CHUNK_SIZE,
-) -> int:
-    min_id = -1
+) -> None:
 
-    while True:
-        actual_query = message_query.filter(id__gt=min_id)[0:chunk_size]
+    dump_file_id = 1
+
+    for message_id_chunk in message_id_chunks:
+        actual_query = Message.objects.filter(id__in=message_id_chunk).order_by("id")
         message_chunk = make_raw(actual_query)
-        message_ids = {m["id"] for m in message_chunk}
-        assert len(message_ids.intersection(all_message_ids)) == 0
-
-        all_message_ids.update(message_ids)
-
-        if len(message_chunk) == 0:
-            break
 
         # Figure out the name of our shard file.
         message_filename = os.path.join(output_dir, f"messages-{dump_file_id:06}.json")
@@ -1347,10 +1346,7 @@ def write_message_partial_for_query(
 
         # And write the data.
         write_data_to_file(message_filename, output)
-        min_id = max(message_ids)
         dump_file_id += 1
-
-    return dump_file_id
 
 
 def export_uploads_and_avatars(
@@ -1364,11 +1360,14 @@ def export_uploads_and_avatars(
     for dir_path in (
         uploads_output_dir,
         avatars_output_dir,
-        realm_icons_output_dir,
         emoji_output_dir,
     ):
         if not os.path.exists(dir_path):
             os.makedirs(dir_path)
+
+    # Avoid creating realm_icons_output_dir for single user exports
+    if user is None and not os.path.exists(realm_icons_output_dir):
+        os.makedirs(realm_icons_output_dir)
 
     if user is None:
         handle_system_bots = True
@@ -1402,11 +1401,13 @@ def export_uploads_and_avatars(
             output_dir=emoji_output_dir,
             realm_emojis=realm_emojis,
         )
-        export_realm_icons(
-            realm,
-            local_dir=os.path.join(settings.LOCAL_UPLOADS_DIR),
-            output_dir=realm_icons_output_dir,
-        )
+
+        if user is None:
+            export_realm_icons(
+                realm,
+                local_dir=os.path.join(settings.LOCAL_UPLOADS_DIR),
+                output_dir=realm_icons_output_dir,
+            )
     else:
         user_ids = {user.id for user in users}
 
@@ -1455,16 +1456,17 @@ def export_uploads_and_avatars(
             valid_hashes=emoji_paths,
         )
 
-        export_files_from_s3(
-            realm,
-            handle_system_bots=handle_system_bots,
-            flavor="realm_icon_or_logo",
-            bucket_name=settings.S3_AVATAR_BUCKET,
-            object_prefix=f"{realm.id}/realm/",
-            output_dir=realm_icons_output_dir,
-            user_ids=user_ids,
-            valid_hashes=None,
-        )
+        if user is None:
+            export_files_from_s3(
+                realm,
+                handle_system_bots=handle_system_bots,
+                flavor="realm_icon_or_logo",
+                bucket_name=settings.S3_AVATAR_BUCKET,
+                object_prefix=f"{realm.id}/realm/",
+                output_dir=realm_icons_output_dir,
+                user_ids=user_ids,
+                valid_hashes=None,
+            )
 
 
 def _get_exported_s3_record(
@@ -1945,8 +1947,12 @@ def do_export_user(user_profile: UserProfile, output_dir: Path) -> None:
     export_file = os.path.join(output_dir, "user.json")
     write_table_data(output_file=export_file, data=response)
 
+    reaction_message_ids: Set[int] = {row["message"] for row in response["zerver_reaction"]}
+
     logging.info("Exporting messages")
-    export_messages_single_user(user_profile, output_dir)
+    export_messages_single_user(
+        user_profile, output_dir=output_dir, reaction_message_ids=reaction_message_ids
+    )
 
     logging.info("Exporting images")
     export_uploads_and_avatars(user_profile.realm, user=user_profile, output_dir=output_dir)
@@ -2026,26 +2032,116 @@ def get_single_user_config() -> Config:
         custom_fetch=custom_fetch_realm_audit_logs_for_user,
     )
 
+    Config(
+        table="zerver_reaction",
+        model=Reaction,
+        normal_parent=user_profile_config,
+        include_rows="user_profile_id__in",
+    )
+
     add_user_profile_child_configs(user_profile_config)
 
     return user_profile_config
 
 
-def export_messages_single_user(
-    user_profile: UserProfile, output_dir: Path, chunk_size: int = MESSAGE_BATCH_CHUNK_SIZE
-) -> None:
-    user_message_query = UserMessage.objects.filter(user_profile=user_profile).order_by("id")
-    min_id = -1
-    dump_file_id = 1
-    while True:
-        actual_query = user_message_query.select_related(
-            "message", "message__sending_client"
-        ).filter(id__gt=min_id)[0:chunk_size]
-        user_message_chunk = list(actual_query)
-        user_message_ids = {um.id for um in user_message_chunk}
+def get_id_list_gently_from_database(*, base_query: Any, id_field: str) -> List[int]:
+    """
+    Use this function if you need a HUGE number of ids from
+    the database, and you don't mind a few extra trips.  Particularly
+    for exports, we don't really care about a little extra time
+    to finish the export--the much bigger concern is that we don't
+    want to overload our database all at once, nor do we want to
+    keep a whole bunch of Django objects around in memory.
 
-        if len(user_message_chunk) == 0:
+    So our general process is to call this function first, and then
+    we call chunkify to break our ids into small chunks for "fat query"
+    batches.
+
+    Even if you are not working at huge scale, this function can
+    also be used for the convenience of its API.
+    """
+    min_id = -1
+    all_ids = []
+    batch_size = 10000  # we are just getting ints
+
+    assert id_field == "id" or id_field.endswith("_id")
+
+    while True:
+        filter_args = {f"{id_field}__gt": min_id}
+        new_ids = list(
+            base_query.values_list(id_field, flat=True)
+            .filter(**filter_args)
+            .order_by(id_field)[:batch_size]
+        )
+        if len(new_ids) == 0:
             break
+        all_ids += new_ids
+        min_id = new_ids[-1]
+
+    return all_ids
+
+
+def chunkify(lst: List[int], chunk_size: int) -> List[List[int]]:
+    # chunkify([1,2,3,4,5], 2) == [[1,2], [3,4], [5]]
+    result = []
+    i = 0
+    while True:
+        chunk = lst[i : i + chunk_size]
+        if len(chunk) == 0:
+            break
+        else:
+            result.append(chunk)
+            i += chunk_size
+
+    return result
+
+
+def export_messages_single_user(
+    user_profile: UserProfile, *, output_dir: Path, reaction_message_ids: Set[int]
+) -> None:
+    @cachify
+    def get_recipient(recipient_id: int) -> str:
+        recipient = Recipient.objects.get(id=recipient_id)
+
+        if recipient.type == Recipient.STREAM:
+            stream = Stream.objects.values("name").get(id=recipient.type_id)
+            return stream["name"]
+
+        user_names = (
+            UserProfile.objects.filter(
+                subscription__recipient_id=recipient.id,
+            )
+            .order_by("full_name")
+            .values_list("full_name", flat=True)
+        )
+
+        return ", ".join(user_names)
+
+    messages_from_me = Message.objects.filter(sender=user_profile)
+
+    my_subscriptions = Subscription.objects.filter(
+        user_profile=user_profile, recipient__type__in=[Recipient.PERSONAL, Recipient.HUDDLE]
+    )
+    my_recipient_ids = [sub.recipient_id for sub in my_subscriptions]
+    messages_to_me = Message.objects.filter(recipient_id__in=my_recipient_ids)
+
+    # Find all message ids that pertain to us.
+    all_message_ids: Set[int] = set()
+
+    for query in [messages_from_me, messages_to_me]:
+        all_message_ids |= set(get_id_list_gently_from_database(base_query=query, id_field="id"))
+
+    all_message_ids |= reaction_message_ids
+
+    dump_file_id = 1
+    for message_id_chunk in chunkify(sorted(list(all_message_ids)), MESSAGE_BATCH_CHUNK_SIZE):
+        fat_query = (
+            UserMessage.objects.select_related("message", "message__sending_client")
+            .filter(user_profile=user_profile, message_id__in=message_id_chunk)
+            .order_by("message_id")
+        )
+
+        user_message_chunk = list(fat_query)
 
         message_chunk = []
         for user_message in user_message_chunk:
@@ -2054,7 +2150,7 @@ def export_messages_single_user(
             item["flags_mask"] = user_message.flags.mask
             # Add a few nice, human-readable details
             item["sending_client_name"] = user_message.message.sending_client.name
-            item["display_recipient"] = get_display_recipient(user_message.message.recipient)
+            item["recipient_name"] = get_recipient(user_message.message.recipient_id)
             message_chunk.append(item)
 
         message_filename = os.path.join(output_dir, f"messages-{dump_file_id:06}.json")
@@ -2064,7 +2160,6 @@ def export_messages_single_user(
         floatify_datetime_fields(output, "zerver_message")
 
         write_table_data(message_filename, output)
-        min_id = max(user_message_ids)
         dump_file_id += 1
 
 

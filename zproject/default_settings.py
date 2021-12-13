@@ -177,8 +177,7 @@ TORNADO_PORTS: List[int] = []
 USING_TORNADO = True
 
 # ToS/Privacy templates
-PRIVACY_POLICY: Optional[str] = None
-TERMS_OF_SERVICE: Optional[str] = None
+POLICIES_DIRECTORY: str = "zerver/policies_absent"
 
 # Security
 ENABLE_FILE_LINKS = False
@@ -358,9 +357,9 @@ REALM_CREATION_LINK_VALIDITY_DAYS = 7
 # Version number for ToS.  Change this if you want to force every
 # user to click through to re-accept terms of service before using
 # Zulip again on the web.
-TOS_VERSION: Optional[str] = None
-# Template to use when bumping TOS_VERSION to explain situation.
-FIRST_TIME_TOS_TEMPLATE: Optional[str] = None
+TERMS_OF_SERVICE_VERSION: Optional[str] = None
+# Template to use when bumping TERMS_OF_SERVICE_VERSION to explain situation.
+FIRST_TIME_TERMS_OF_SERVICE_TEMPLATE: Optional[str] = None
 
 # Hostname used for Zulip's statsd logging integration.
 STATSD_HOST = ""

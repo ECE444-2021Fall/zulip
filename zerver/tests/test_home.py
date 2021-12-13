@@ -387,6 +387,7 @@ class HomeTest(ZulipTestCase):
             # Should be successful after calling 2fa login function.
             self.check_rendered_logged_in_app(result)
 
+    @override_settings(TERMS_OF_SERVICE_VERSION=None)
     def test_num_queries_for_realm_admin(self) -> None:
         # Verify number of queries for Realm admin isn't much higher than for normal users.
         self.login("iago")
@@ -457,8 +458,7 @@ class HomeTest(ZulipTestCase):
             user.tos_version = user_tos_version
             user.save()
 
-            with self.settings(TERMS_OF_SERVICE="whatever"), self.settings(TOS_VERSION="99.99"):
-
+            with self.settings(TERMS_OF_SERVICE_VERSION="99.99"):
                 result = self.client_get("/", dict(stream="Denmark"))
 
             html = result.content.decode()
@@ -494,8 +494,8 @@ class HomeTest(ZulipTestCase):
         user.tos_version = None
         user.save()
 
-        with self.settings(FIRST_TIME_TOS_TEMPLATE="hello.html"), self.settings(
-            TOS_VERSION="99.99"
+        with self.settings(FIRST_TIME_TERMS_OF_SERVICE_TEMPLATE="zerver/hello.html"), self.settings(
+            TERMS_OF_SERVICE_VERSION="99.99"
         ):
             result = self.client_post("/accounts/accept_terms/")
             self.assertEqual(result.status_code, 200)
